@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Mux Beacon Logger</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header>
+    <div class="toolbar">
+      <h1>Mux Logger</h1>
+      <span class="badge" id="proxy-badge"><span class="dot"></span><span id="proxy-label">…</span></span>
+      <span class="badge rec" id="rec-badge"><span class="dot"></span><span id="rec-label">…</span></span>
+      <button id="toggle-proxy">Stop proxy</button>
+      <button id="toggle-rec">Pause recording</button>
+      <button id="clear-disk" class="danger">Delete logs</button>
+      <input type="text" id="filter" placeholder="filter events (any field)" style="margin-left:auto" />
+      <select id="event-filter"><option value="">All events</option></select>
+      <label title="Collapse the events of each request (beacon) under a header"><input type="checkbox" id="group-requests" /> group by request</label>
+      <button id="collapse-all" style="display:none" title="Collapse / expand all requests">Collapse all</button>
+      <label><input type="checkbox" id="autoscroll" checked /> autoscroll</label>
+      <label class="stepper" title="Render only the most recent N events (0 = show all). All beacons stay on disk.">
+        show last <input type="number" id="event-cap" min="0" step="100" value="500" /> events
+      </label>
+      <button id="config-btn" title="Settings">⚙</button>
+    </div>
+  </header>
+
+  <div class="modal-backdrop" id="confirm-modal">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2 id="confirm-title">Confirm</h2>
+      <div class="confirm-msg" id="confirm-message"></div>
+      <div class="actions">
+        <button id="confirm-cancel">Cancel</button>
+        <button id="confirm-ok" class="primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="config-modal">
+    <div class="modal config-modal" role="dialog" aria-modal="true">
+      <h2>Configuration</h2>
+      <div class="config-body">
+        <div class="field">
+          <label for="cfg-port">Proxy port</label>
+          <input type="number" id="cfg-port" min="1" max="65535" />
+          <div class="help">Port the Roku device sends Mux beacons to. Proxy restarts on save.</div>
+        </div>
+        <div class="field">
+          <label for="cfg-url-prefix">Client URL prefix</label>
+          <input type="text" id="cfg-url-prefix" placeholder="e.g. /;" />
+          <div class="help">Separator between the proxy address and the upstream Mux URL in the request path (the SDK sends <code>/;https://&lt;env&gt;.litix.io</code>).</div>
+        </div>
+        <div class="field">
+          <label for="cfg-clear-view-url">Clear session URL</label>
+          <input type="text" id="cfg-clear-view-url" readonly />
+          <div class="help">Call this URL from the device (or any browser) to delete all stored logs and reset the grid — the proxy answers 200 without forwarding. Read-only; derived from the proxy host:port and the clear pattern.</div>
+        </div>
+      </div>
+      <div class="err" id="cfg-error"></div>
+      <div class="actions">
+        <button id="cfg-cancel">Cancel</button>
+        <button id="cfg-save" class="primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <div id="grid">
+      <table>
+        <thead>
+          <tr id="head-row"></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div id="empty">No Mux events yet. Waiting for beacons…</div>
+    </div>
+    <div id="detail">
+      <div id="detail-head">
+        <span class="title" id="detail-title"></span>
+        <button id="detail-raw" title="View raw logged beacon JSON">raw beacon</button>
+        <button id="detail-close" title="Close (Esc)">✕ Close</button>
+      </div>
+      <div id="detail-body"></div>
+    </div>
+  </main>
+
+  <section id="timeline">
+    <div id="timeline-head">
+      <span class="tl-title">VIEWER TIMELINE</span>
+      <select id="tl-view" title="Choose which view (playback) to show"></select>
+      <span class="tl-info" id="tl-info"></span>
+      <div class="tl-legend">
+        <span class="lg"><i class="sw s-startup"></i>Starting Up</span>
+        <span class="lg"><i class="sw s-seek"></i>Seek Latency</span>
+        <span class="lg"><i class="sw s-rebuffering"></i>Rebuffering</span>
+        <span class="lg"><i class="sw s-playing"></i>Video Playing</span>
+        <span class="lg"><i class="sw s-ad"></i>Ad Playing</span>
+        <span class="lg"><i class="sw s-paused"></i>Paused</span>
+        <span class="lg"><i class="sw s-failure"></i>Playback Failure</span>
+      </div>
+    </div>
+    <div id="tl-track-wrap">
+      <div id="tl-ticks"></div>
+      <div id="tl-track"></div>
+      <div id="tl-axis"></div>
+    </div>
+    <div id="tl-tooltip"></div>
+  </section>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <footer id="statusbar">
+    <span class="status-item"><span class="status-label">Events:</span> <span id="stat-events">0</span></span>
+    <span class="status-sep">|</span>
+    <span class="status-item"><span class="status-label">Beacons:</span> <span id="stat-beacons">0</span></span>
+    <span class="status-sep">|</span>
+    <span class="status-item"><span class="status-label">Shown:</span> <span id="stat-shown">0</span></span>
+    <span class="status-sep">|</span>
+    <span class="status-item"><span class="status-label">Logs size:</span> <span id="stat-size">0 B</span></span>
+  </footer>
+  <script src="/app.js" defer></script>
+</body>
+</html>

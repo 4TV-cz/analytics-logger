@@ -1,0 +1,47 @@
+{
+  "name": "mux-logger",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local proxy + viewer for Roku Mux reporting beacons. Forwards beacons to litix.io and renders each Mux event (decoded property names) on its own row.",
+  "main": "electron-main.js",
+  "scripts": {
+    "web": "node server.js",
+    "web:dev": "node --watch --watch-path=./server.js --watch-path=./src server.js",
+    "electron": "electron electron-main.js",
+    "electron:release": "electron-builder",
+    "electron:release:win": "electron-builder --win",
+    "electron:release:mac": "electron-builder --mac",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "build": {
+    "appId": "com.deltatre.mux-logger",
+    "productName": "Mux Logger",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron-main.js",
+      "server.js",
+      "src/**/*",
+      "config/**/*",
+      "assets/**/*"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": "portable",
+      "artifactName": "MuxLogger-${version}-portable.exe"
+    },
+    "mac": {
+      "icon": "assets/icon.png",
+      "target": "dmg",
+      "artifactName": "MuxLogger-${version}.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^42.4.1",
+    "electron-builder": "^24.13.3"
+  }
+}
