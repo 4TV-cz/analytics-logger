@@ -1,39 +1,85 @@
 # Mux Logger
 
-Local proxy + viewer for **Roku Mux reporting beacons**. The Roku Mux SDK sends its analytics beacons with minified property names (`pcycd` instead of `player_country_code`); this tool sits between the device and `litix.io`, forwards every beacon upstream unchanged, logs each one to disk, and renders every Mux event on its own row with **decoded property names**.
+Local proxy + viewer for **Mux reporting beacons** from any player — Roku, web players, smart TVs, or any other frontend device that reports to Mux. Mux SDKs send their analytics beacons with minified property names (`pcycd` instead of `player_country_code`); this tool sits between the player and `litix.io`, forwards every beacon upstream unchanged, logs each one to disk, and renders every Mux event on its own row with **decoded property names**.
+
+![Mux Logger](assets/app_screenshot.png)
 
 ```
-Roku device ──► Mux Logger proxy (0.0.0.0:8889) ──► https://<env>.litix.io
-                       │
-                       ├── logs/  (one JSON file per beacon)
-                       └── GUI    (http://localhost:8080)
+player / device ──► Mux Logger proxy (0.0.0.0:8889) ──► https://<env>.litix.io
+(Roku, web, TV)          │
+                         ├── logs/  (one JSON file per beacon)
+                         └── GUI    (http://localhost:8080)
 ```
 
 ## How it works
 
-- The Roku app points its Mux reporting traffic at this proxy. Requests arrive as `http://<proxy-ip>:8889/;https://<env>.litix.io/...` — the `/;` prefix separates the proxy address from the real upstream URL.
-- The proxy forwards the request byte-for-byte to Mux and relays the response back to the device, so real Mux dashboards keep working while you observe.
+- The player points its Mux reporting traffic at this proxy. Requests arrive as `http://<proxy-ip>:8889/;https://<env>.litix.io/...` — the `/;` prefix separates the proxy address from the real upstream URL. (The prefix is configurable in ⚙ config — see [Pointing a player at the proxy](#pointing-a-player-at-the-proxy).)
+- The proxy forwards the request byte-for-byte to Mux and relays the response back to the player, so real Mux dashboards keep working while you observe.
 - Any request whose body contains an `events` array is recorded as one JSON file in `logs/`. Other traffic is forwarded but not logged.
-- Property keys are decoded by reversing the SDK's `_minify` word tables (source of truth: `MuxTask.bs` in the Roku SDK) — see `src/scripts/mux.js`.
+- Property keys are decoded by reversing the Mux SDK `_minify` word tables (reversed from `MuxTask.bs` in the Roku SDK; the same minification scheme is used across Mux SDKs, including `mux-embed` on the web) — see `src/scripts/mux.js`.
+
+## Pointing a player at the proxy
+
+The device does not discover the proxy by itself — you must **update the Mux endpoint URL in the player/app configuration** so beacons are sent to this proxy instead of directly to `litix.io`:
+
+1. Start Mux Logger and note the proxy address: `<your-LAN-IP>` (the machine running this tool — it must be reachable from the device, same network) and the proxy port (`8889` by default, shown in the toolbar badge and the ⚙ dialog).
+2. Take the original Mux endpoint the player uses today, e.g. `https://<env>.litix.io`.
+3. Build the new endpoint by joining the three parts — proxy address, the **Client URL prefix** from the ⚙ config (default `/;`), and the original URL:
+
+   ```
+   http://<your-LAN-IP>:<port>  +  <urlPrefix>  +  <original Mux URL>
+   ```
+
+   Example with the default config (`port: 8889`, `urlPrefix: "/;"`), proxy machine at `192.168.1.50`:
+
+   ```
+   before:  https://tvos-prod.litix.io
+   after:   http://192.168.1.50:8889/;https://tvos-prod.litix.io
+   ```
+
+4. Set that URL as the Mux beacon endpoint on the device and restart playback; rows should appear in the grid as soon as the player reports.
+
+Where to set it, per client:
+
+- **Roku SDK** — set the beacon/base URL to `http://<your-LAN-IP>:8889/;https://<env>.litix.io`.
+- **Web (`mux-embed`, player SDKs)** — set `beaconCollectionDomain` / beacon domain so requests hit `http://<your-LAN-IP>:8889/;https://<env>.litix.io` (or use browser devtools/proxy rules to rewrite the litix.io request URL).
+- **Other devices** — anything that can be pointed at a custom HTTP endpoint (directly or via a charles/mitm rewrite rule) and sends standard Mux beacons.
+
+If your SDK composes the URL differently, adjust the **Client URL prefix** in ⚙ config to match: `/;` when the client inserts a `;` separator (Roku default), `/` for clients that send `http://<proxy>/https://...`, or empty for clients using the tool as a plain HTTP proxy with absolute-form URLs.
 
 ## Quick start
 
-Requires Node.js ≥ 18.
+The app can be used in two ways — both run the same proxy and the same GUI, pick whichever suits you:
+
+- **In the browser (web mode)** — a plain Node process runs the proxy and serves the GUI; you open it in any browser.
+- **As a desktop app (Electron)** — a standalone window wraps the same GUI; the proxy starts when the app opens and stops when you close the window. This mode can also be built into a distributable (portable .exe / dmg), so end users don't need Node.js at all.
+
+Requires Node.js ≥ 18 (when running from source).
 
 ```sh
 npm install
-
-# Web: proxy + browser GUI, open http://localhost:8080
-npm run web
-
-# Same, restarting on source changes
-npm run web:dev
-
-# Desktop app (Electron window wrapping the same GUI)
-npm run electron
 ```
 
-Then point the Roku device's Mux beacon URL at `http://<your-LAN-IP>:8889/;https://<env>.litix.io`.
+**Browser:**
+
+```sh
+npm run web        # then open http://localhost:8080
+npm run web:dev    # same, restarting on source changes
+```
+
+**Electron desktop app:**
+
+```sh
+npm run electron               # run from source, window opens by itself
+
+# or build a self-contained distributable (no Node.js needed on the target machine):
+npm run electron:release:win   # portable .exe  -> dist/MuxLogger-<version>-portable.exe
+npm run electron:release:mac   # dmg            -> dist/MuxLogger-<version>.dmg
+```
+
+The portable Windows build stores its `logs/` and `config/` in a `mux-logger-data` folder next to the `.exe`, so the data travels with the app; runs from source use the repo's own `logs/` and `config/` directories.
+
+Either way, then point the player's Mux beacon URL at `http://<your-LAN-IP>:8889/;https://<env>.litix.io` (see [Pointing a player at the proxy](#pointing-a-player-at-the-proxy)).
 
 ## The GUI
 
@@ -41,11 +87,20 @@ Then point the Roku device's Mux beacon URL at `http://<your-LAN-IP>:8889/;https
 - **Filtering** — free-text filter across all fields, event-type dropdown, optional grouping by request (beacon) with collapsible headers.
 - **Viewer timeline** — Mux-style playback timeline per view (starting up / playing / rebuffering / seeking / ad / paused / failure), with a tick per event and a view selector.
 - **Controls** — start/stop the proxy, pause/resume recording, delete all logs, display cap ("show last N events" — display-only, nothing is deleted).
+- **⚙ Settings dialog** — change the **proxy port** and the client URL prefix (the proxy restarts automatically on save), and view the read-only clear-session URL.
 - **Clear session URL** — calling `http://<proxy-ip>:8889/session/clear` (from the device or a browser) deletes all stored logs and resets the grid without forwarding anything. Useful as a test-run separator; the exact URL is shown in the ⚙ config dialog.
+
+  > **Tip:** hook the clear session URL into your app's build/deploy script to start every build with a clean session — e.g. as the last step before sideloading:
+  >
+  > ```sh
+  > curl -s http://192.168.1.50:8889/session/clear
+  > ```
+  >
+  > The grid then only ever shows beacons from the build you just deployed.
 
 ## Configuration
 
-Settings live in `config/config.json` (created/updated when you save from the GUI's ⚙ dialog). Environment variables provide the defaults on first run:
+Settings live in `config/config.json` (created/updated when you save from the GUI's ⚙ dialog). The dialog edits `port` and `urlPrefix`; the remaining keys can be set via environment variables (defaults on first run), by editing `config.json` directly, or via `POST /api/config`:
 
 | Key | Env var | Default | Meaning |
 | --- | --- | --- | --- |
@@ -71,33 +126,3 @@ The GUI is a thin client over these endpoints (all served by the GUI port):
 | `POST /api/recording/start` / `POST /api/recording/stop` | Resume / pause writing beacons to disk |
 | `POST /api/logs/clear` | Delete all logged beacon files |
 
-## Building a distributable
-
-```sh
-npm run electron:release:win   # portable .exe  -> dist/MuxLogger-<version>-portable.exe
-npm run electron:release:mac   # dmg            -> dist/MuxLogger-<version>.dmg
-npm run clean                  # remove dist/
-```
-
-The portable Windows build stores its `logs/` and `config/` in a `mux-logger-data` folder next to the `.exe` (so the data travels with the app); non-portable/dev runs use the repo's own `logs/` and `config/` directories.
-
-## Project layout
-
-```
-electron-main.js          Electron entry point (app lifecycle, window, single instance)
-server.js                 Web entry point (no Electron)
-src/
-  index.js                createApp(): wires config + log store + proxy + GUI servers
-  scripts/
-    proxy-server.js       Beacon proxy: capture, forward, log, clear-session handling
-    proxy.js              Upstream URL parsing, header filtering, upstream HTTP call
-    gui-server.js         Static GUI + JSON API
-    log-store.js          One JSON file per beacon; in-memory decoded event rows
-    mux.js                Minified-key decoder (reverse of MuxTask.bs _minify) + curated columns
-    config.js             config.json load/save/validate
-    body-utils.js         Best-effort JSON body parsing (logging only)
-  components/
-    index.html, app.js, styles.css   The GUI (vanilla JS, no build step)
-config/config.json        Runtime settings (created/updated by the GUI)
-logs/                     Logged beacons (one .json per beacon)
-```
