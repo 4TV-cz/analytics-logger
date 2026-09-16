@@ -29,7 +29,7 @@ function createApp({ guiPort = DEFAULT_GUI_PORT, logDir = LOG_DIR, configFile = 
       console.error(`[proxy] failed to start on ${cfg.host}:${cfg.port}:`, err.message);
     }
     await gui.start();
-    console.log(`Logging Mux beacons (one JSON file per beacon) to ${LOG_DIR}`);
+    console.log(`Logging Mux beacons (one JSON file per beacon) to ${logDir}`);
     console.log(`Loaded ${logStore.getEventCount()} events from ${logStore.getBeaconCount()} beacons`);
   }
 

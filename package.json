@@ -8,12 +8,11 @@
     "free-ports": "node scripts/free-ports.js",
     "preweb": "node scripts/free-ports.js",
     "web": "node server.js",
+    "preweb:dev": "node scripts/free-ports.js",
     "web:dev": "node --watch --watch-path=./server.js --watch-path=./src server.js",
     "preelectron": "node scripts/free-ports.js",
     "electron": "electron electron-main.js",
     "electron:release": "electron-builder",
-    "electron:release:win": "electron-builder --win",
-    "electron:release:mac": "electron-builder --mac",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "engines": {
@@ -34,7 +33,12 @@
     ],
     "win": {
       "icon": "assets/icon.ico",
-      "target": "portable",
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
       "artifactName": "MuxLogger-${version}-portable.exe"
     },
     "mac": {

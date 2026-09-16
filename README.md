@@ -73,13 +73,35 @@ npm run web:dev    # same, restarting on source changes
 npm run electron               # run from source, window opens by itself
 
 # or build a self-contained distributable (no Node.js needed on the target machine):
-npm run electron:release:win   # portable .exe  -> dist/MuxLogger-<version>-portable.exe
-npm run electron:release:mac   # dmg            -> dist/MuxLogger-<version>.dmg
+npm run electron:release            # builds for the OS you're on
+npm run electron:release -- --win   # portable .exe (x64) -> dist/MuxLogger-<version>-portable.exe
+npm run electron:release -- --mac   # dmg                 -> dist/MuxLogger-<version>.dmg
 ```
 
-The portable Windows build stores its `logs/` and `config/` in a `mux-logger-data` folder next to the `.exe`, so the data travels with the app; runs from source use the repo's own `logs/` and `config/` directories.
+Anything after `--` is passed straight through to `electron-builder`, so one script covers every target. Either release can be built from either OS — the Windows `.exe` cross-builds fine from macOS, no wine required. Both are unsigned: Windows shows a SmartScreen warning, macOS requires right-click → Open (or `xattr -d com.apple.quarantine`) on first launch.
+
+Where `logs/` and `config/` live depends on how you run it:
+
+- **From source** (`npm run web`, `npm run web:dev`, `npm run electron`) — the repo's own `logs/` and `config/` directories.
+- **Portable Windows build** — a `mux-logger-data` folder next to the `.exe`, so the data travels with the app.
+- **macOS dmg build** — `~/Library/Application Support/mux-logger/` (the app bundle itself is read-only).
 
 Either way, then point the player's Mux beacon URL at `http://<your-LAN-IP>:8889/;https://<env>.litix.io` (see [Pointing a player at the proxy](#pointing-a-player-at-the-proxy)).
+
+## Scripts
+
+| Script | What it does |
+| --- | --- |
+| `npm run web` | Proxy + GUI as a plain Node process. Open http://localhost:8080 |
+| `npm run web:dev` | Same, under `node --watch` — restarts on changes to `server.js` or `src/` |
+| `npm run electron` | Desktop app from source; it starts and stops the proxy itself |
+| `npm run electron:release` | Builds a distributable into `dist/` for the OS you're on. Add `-- --win` for the portable Windows x64 `.exe`, or `-- --mac` for the `.dmg` |
+| `npm run free-ports` | Frees ports 8889 / 8080 by killing leftover node/electron processes still holding them |
+| `npm run clean` | Deletes `dist/` |
+
+`free-ports` also runs automatically before `web`, `web:dev`, and `electron` (via the `preweb`, `preweb:dev`, and `preelectron` hooks), so a previous run that was force-quit can't block the next start with `EADDRINUSE`. It only ever kills node/electron processes, never an unrelated app that happens to sit on the same port. Run it by hand when you want the ports freed without starting anything.
+
+> Note: npm matches lifecycle hooks on the **full** script name — the hook for `web:dev` must be called `preweb:dev`, not `preweb`.
 
 ## The GUI
 

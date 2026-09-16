@@ -5,7 +5,9 @@ const path = require('path');
 const { app, BrowserWindow, shell, dialog } = require('electron');
 const { createApp } = require('./src');
 
-const ICON = path.join(__dirname, 'assets', 'icon.ico');
+// Windows wants a multi-size .ico; macOS/Linux can't decode one (the window
+// icon is ignored on macOS anyway — the dock uses the bundle icon).
+const ICON = path.join(__dirname, 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
 
 // When packaged, the app source lives inside the read-only app.asar archive, so
 // logs/config can't be written next to the code. For the portable build,
