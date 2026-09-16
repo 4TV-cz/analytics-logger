@@ -5,8 +5,11 @@
   "description": "Local proxy + viewer for Roku Mux reporting beacons. Forwards beacons to litix.io and renders each Mux event (decoded property names) on its own row.",
   "main": "electron-main.js",
   "scripts": {
+    "free-ports": "node scripts/free-ports.js",
+    "preweb": "node scripts/free-ports.js",
     "web": "node server.js",
     "web:dev": "node --watch --watch-path=./server.js --watch-path=./src server.js",
+    "preelectron": "node scripts/free-ports.js",
     "electron": "electron electron-main.js",
     "electron:release": "electron-builder",
     "electron:release:win": "electron-builder --win",

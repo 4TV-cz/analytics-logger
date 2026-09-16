@@ -2,7 +2,7 @@
 // when the app opens and stops them when it closes, so there's no separate
 // `node server.js` to run. Launch with `npm run electron`.
 const path = require('path');
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, shell, dialog } = require('electron');
 const { createApp } = require('./src');
 
 const ICON = path.join(__dirname, 'assets', 'icon.ico');
@@ -24,9 +24,24 @@ let stopping = false;
 
 async function createWindow() {
   // Boot the proxy (0.0.0.0:8889 — the Roku still reaches it) and the GUI
-  // (localhost:8080) before loading the window.
+  // (localhost:8080) before loading the window. If the GUI port is already
+  // taken (a leftover run, or another app), start() throws. We must NOT let
+  // that leave the process alive: it would still hold the single-instance lock
+  // (below), so every later launch silently quits with no window. Surface the
+  // error and quit so the lock is released and the next launch can succeed.
   backend = createApp({ logDir: LOG_DIR, configFile: CONFIG_FILE });
-  await backend.start();
+  try {
+    await backend.start();
+  } catch (err) {
+    await stopBackend();
+    dialog.showErrorBox(
+      'Mux Logger failed to start',
+      `Could not start the local servers:\n\n${err.message}\n\n` +
+      'A previous copy may still be running. Close it (or reboot) and try again.'
+    );
+    app.quit();
+    return;
+  }
 
   win = new BrowserWindow({
     width: 1400,
