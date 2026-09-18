@@ -1,15 +1,16 @@
 const fs = require('fs');
 const path = require('path');
-const { decodeEvent, extractEvents } = require('./mux');
+const { detectProvider } = require('./providers');
 
-// Stores one JSON file per beacon request (as received from the Roku Mux SDK)
-// and keeps an in-memory, flattened list of decoded *events* — one entry per
-// event inside every beacon — which is what the GUI renders (one row each).
+// Stores one JSON file per logged request and keeps an in-memory, flattened
+// list of analytics *events* — one entry per event inside every request, as
+// extracted by the matching provider (see providers.js) — which is what the
+// GUI renders (one row each).
 class LogStore {
   constructor(logDir) {
     this.logDir = logDir;
     this.eventRows = [];
-    this.beaconSeq = 0; // running beacon number, in arrival order
+    this.requestSeq = 0; // running request number, in arrival order
     this.lastTimestamp = '';
     this.dupCount = 0;
     this.diskBytes = 0;
@@ -39,46 +40,48 @@ class LogStore {
     return base;
   }
 
-  // Flatten one beacon entry into decoded event rows and append them.
+  // Flatten one logged request into provider-decoded event rows and append them.
   _indexEntry(fileBase, entry) {
-    const events = extractEvents(entry);
-    if (events.length === 0) return 0;
-    const beacon = ++this.beaconSeq;
+    const provider = detectProvider(entry);
+    let events;
+    try { events = provider.events(entry); }
+    catch (err) { console.error(`[log] ${provider.id} decode failed for ${fileBase}:`, err.message); events = []; }
+    // A recognised request with nothing decodable still gets one row so it stays visible.
+    if (events.length === 0) events = [{ event: 'request', props: {} }];
+    const request = ++this.requestSeq;
     const ts = entry.request?.timestamp || null;
     const status = entry.response?.statusCode ?? null;
     const error = entry.response?.error || null;
     const forwarded = entry.response?.forwarded !== false;
     const upstream = entry.request?.upstream?.host || entry.request?.url || null;
-    events.forEach((raw, idx) => {
-      const props = decodeEvent(raw);
-      const viewerTimeRaw = props.viewer_time;
-      const viewerTime = viewerTimeRaw != null ? Number(viewerTimeRaw) : null;
+    events.forEach((ev, idx) => {
       this.eventRows.push({
         id: `${fileBase}#${idx}`,
         file: fileBase,
-        beacon,
+        request,
         idx,
         ts,
-        viewerTime: Number.isFinite(viewerTime) ? viewerTime : null,
+        provider: provider.id,
+        viewerTime: ev.viewerTime ?? null,
         status,
         error,
         forwarded,
         upstream,
-        event: props.event || raw.e || '',
-        props,
+        event: ev.event || '',
+        props: ev.props || {},
       });
     });
-    return events.length;
+    return { provider: provider.id, count: events.length };
   }
 
+  // Persist one request and index its events. Returns { file, provider, count }.
   writeEntry(entry) {
     const file = this._makeFilename(new Date());
     const base = path.basename(file);
     const buf = Buffer.from(JSON.stringify(entry, null, 2));
     fs.writeFileSync(file, buf);
     this.diskBytes += buf.length;
-    this._indexEntry(base, entry);
-    return file;
+    return { file, ...this._indexEntry(base, entry) };
   }
 
   loadFromDisk() {
@@ -112,8 +115,8 @@ class LogStore {
     return this.eventRows.length;
   }
 
-  getBeaconCount() {
-    return this.beaconSeq;
+  getRequestCount() {
+    return this.requestSeq;
   }
 
   readEntry(name) {
@@ -135,7 +138,7 @@ class LogStore {
       }
     } catch {}
     this.eventRows.length = 0;
-    this.beaconSeq = 0;
+    this.requestSeq = 0;
     this.diskBytes = 0;
     return deleted;
   }

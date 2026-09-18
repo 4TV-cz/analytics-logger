@@ -1,6 +1,6 @@
 // Parse a request body as JSON when it looks like JSON; otherwise return the
-// raw text. Used only to surface the beacon's events for logging — the bytes
-// forwarded upstream are always the untouched original.
+// raw text. Used only to decode the request for logging — the bytes forwarded
+// upstream are always the untouched original.
 function parseIfJson(text, contentType) {
   if (!text) return text;
   const ct = (contentType || '').toLowerCase();

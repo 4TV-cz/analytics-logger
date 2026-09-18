@@ -1,13 +1,15 @@
 'use strict';
 
 // ---- state ----
-let columns = [];          // curated columns from the server [{key,label,width,num,combo}]
+let providers = [];        // [{id,label}] from the server, in display order
+let columnsByProvider = {}; // provider id -> curated columns [{key,label,width,num,combo}]
+let headSig = '';          // signature of the currently rendered column set
 let rows = [];             // every decoded event row we know about
 const idSet = new Set();   // row ids we already have (for incremental polling)
 let lastId = null;         // id of the most recent row, for /api/events?since=
 let filtered = [];         // rows currently displayed
 let selectedId = null;
-let eventTypes = new Set();
+let eventTypes = new Map(); // provider id -> Set of event names seen
 let proxyListening = true;
 let recording = true;
 let forwarding = true;
@@ -26,7 +28,7 @@ function el(tag, className, text) {
 }
 
 // Display cap: render only the most recent N events (0 = all). Display-only —
-// it never deletes logs; all beacons stay on disk and in memory.
+// it never deletes logs; all requests stay on disk and in memory.
 let eventCap = (() => {
   const raw = localStorage.getItem('mux.eventCap');
   if (raw === null) return 500; // unset -> default (Number(null) is 0, so guard explicitly)
@@ -45,9 +47,41 @@ function fmtBytes(n) {
 // meta columns rendered by the client, before the curated property columns
 const META_COLS = [
   { key: '_idx', label: '#', width: 56, num: true },
-  { key: '_beacon', label: 'beacon', width: 64, num: true },
+  { key: '_request', label: 'req', width: 56, num: true },
   { key: '_time', label: 'time', width: 110 },
+  { key: '_provider', label: 'provider', width: 90 },
 ];
+
+// Selected provider ('' = all). Drives both the row filter and the column layout.
+let providerFilter = localStorage.getItem('logger.provider') || '';
+
+function providerLabel(id) {
+  return (providers.find((p) => p.id === id) || {}).label || id;
+}
+
+// Columns for the current selection: the chosen provider's layout, or — for
+// "All providers" — the union of layouts of every provider present in `list`
+// (so a Mux-only session still looks exactly like the Mux layout).
+function activeColumns(list) {
+  const ids = providerFilter
+    ? [providerFilter]
+    : providers.map((p) => p.id).filter((id) => list.some((r) => r.provider === id));
+  const seen = new Set();
+  const out = [];
+  for (const id of ids) {
+    for (const c of columnsByProvider[id] || []) {
+      if (seen.has(c.key)) continue;
+      seen.add(c.key);
+      out.push(c);
+    }
+  }
+  if (!out.length && !providerFilter) {
+    // nothing displayed yet: show the first provider's layout as a placeholder
+    const first = providers[0] && columnsByProvider[providers[0].id];
+    if (first) out.push(...first);
+  }
+  return [...META_COLS, ...out];
+}
 
 function eventClass(ev) {
   if (!ev) return '';
@@ -68,8 +102,9 @@ function fmtTime(row) {
 
 function cellValue(row, col) {
   if (col.key === '_idx') return row._seq;
-  if (col.key === '_beacon') return row.beacon;
+  if (col.key === '_request') return row.request;
   if (col.key === '_time') return fmtTime(row);
+  if (col.key === '_provider') return providerLabel(row.provider);
   return row.props[col.key];
 }
 
@@ -83,6 +118,7 @@ function fmtHMS(ms) {
 }
 
 function fmtCell(row, col) {
+  if (col.key === '_provider') return el('span', 'prov ' + row.provider, providerLabel(row.provider));
   if (col.key === 'event') {
     const cls = eventClass(row.event);
     return el('span', 'ev' + (cls ? ' ' + cls : ''), row.event || '');
@@ -98,10 +134,10 @@ function fmtCell(row, col) {
 }
 
 // ---- header ----
-function renderHead() {
+function renderHead(cols) {
   const head = $('head-row');
   head.innerHTML = '';
-  for (const col of [...META_COLS, ...columns]) {
+  for (const col of cols) {
     const th = document.createElement('th');
     th.textContent = col.label;
     if (col.num) th.className = 'num';
@@ -111,10 +147,10 @@ function renderHead() {
 }
 
 // ---- filtering ----
-// Lowercased "event beacon key value key value …" blob, computed once per row
+// Lowercased "event request provider key value key value …" blob, computed once per row
 // at ingest so the free-text filter is a single substring test (see ingest).
 function searchBlob(r) {
-  const parts = [r.event, r.beacon];
+  const parts = [r.event, r.request, r.provider];
   for (const [k, v] of Object.entries(r.props)) { parts.push(k); if (v != null) parts.push(v); }
   return parts.join(' ').toLowerCase();
 }
@@ -128,13 +164,14 @@ function computeFiltered() {
     if (idx !== -1) base = rows.slice(idx + 1);
   }
   filtered = base.filter((r) => {
+    if (providerFilter && r.provider !== providerFilter) return false;
     if (evSel && r.event !== evSel) return false;
     return !q || r._search.includes(q);
   });
 }
 
 // ---- grid ----
-const collapsed = new Set(); // beacon numbers whose events are hidden
+const collapsed = new Set(); // request numbers whose events are hidden
 
 function buildRow(r, cols) {
   const tr = document.createElement('tr');
@@ -143,7 +180,7 @@ function buildRow(r, cols) {
   for (const col of cols) {
     const td = document.createElement('td');
     if (col.num) td.className = 'num';
-    if (col.key === '_idx' || col.key === '_beacon') td.classList.add('muted');
+    if (col.key === '_idx' || col.key === '_request') td.classList.add('muted');
     td.appendChild(fmtCell(r, col));
     tr.appendChild(td);
   }
@@ -158,13 +195,19 @@ function buildGroupHeader(grp, colspan) {
   const td = document.createElement('td');
   td.colSpan = colspan;
 
-  const arrow = el('span', 'gh-arrow', collapsed.has(grp.beacon) ? '▶' : '▼');
-  const title = el('span', 'gh-title', `Request #${grp.beacon}`);
+  const arrow = el('span', 'gh-arrow', collapsed.has(grp.request) ? '▶' : '▼');
+  const title = el('span', 'gh-title', `Request #${grp.request}`);
 
   const first = grp.rows[0];
   const n = grp.rows.length;
-  const meta = el('span', 'gh-meta',
-    `${fmtTime(first)} · ${n} event${n > 1 ? 's' : ''} · ${first.error ? 'ERR' : (first.status ?? '')}${first.forwarded === false ? ' · not forwarded' : ''}`);
+  const meta = el('span', 'gh-meta', [
+    fmtTime(first),
+    providerLabel(first.provider),
+    first.upstream,
+    `${n} event${n > 1 ? 's' : ''}`,
+    first.error ? 'ERR' : first.status,
+    first.forwarded === false ? 'not forwarded' : null,
+  ].filter((x) => x != null && x !== '').join(' · '));
 
   const badges = el('span', 'gh-badges');
   grp.rows.slice(0, MAX_HEADER_BADGES).forEach((r) => {
@@ -175,13 +218,13 @@ function buildGroupHeader(grp, colspan) {
 
   td.append(arrow, title, meta, badges);
   tr.appendChild(td);
-  tr.addEventListener('click', () => toggleCollapse(grp.beacon));
+  tr.addEventListener('click', () => toggleCollapse(grp.request));
   return tr;
 }
 
-function toggleCollapse(beacon) {
-  if (collapsed.has(beacon)) collapsed.delete(beacon);
-  else collapsed.add(beacon);
+function toggleCollapse(request) {
+  if (collapsed.has(request)) collapsed.delete(request);
+  else collapsed.add(request);
   render();
 }
 
@@ -191,23 +234,25 @@ function render() {
   const display = (eventCap > 0 && filtered.length > eventCap) ? filtered.slice(-eventCap) : filtered;
 
   const tbody = $('rows');
-  const cols = [...META_COLS, ...columns];
+  const cols = activeColumns(display);
+  const sig = cols.map((c) => c.key).join(',');
+  if (sig !== headSig) { headSig = sig; renderHead(cols); }
   const grid = $('grid');
   const grouped = $('group-requests').checked;
   const atBottom = grid.scrollHeight - grid.scrollTop - grid.clientHeight < 40;
 
   const frag = document.createDocumentFragment();
   if (grouped) {
-    // group consecutive displayed rows by beacon (rows are already in order)
+    // group consecutive displayed rows by request (rows are already in order)
     const groups = [];
     let g = null;
     for (const r of display) {
-      if (!g || g.beacon !== r.beacon) { g = { beacon: r.beacon, rows: [] }; groups.push(g); }
+      if (!g || g.request !== r.request) { g = { request: r.request, rows: [] }; groups.push(g); }
       g.rows.push(r);
     }
     for (const grp of groups) {
       frag.appendChild(buildGroupHeader(grp, cols.length));
-      if (!collapsed.has(grp.beacon)) {
+      if (!collapsed.has(grp.request)) {
         for (const r of grp.rows) frag.appendChild(buildRow(r, cols));
       }
     }
@@ -220,8 +265,8 @@ function render() {
   const caBtn = $('collapse-all');
   caBtn.style.display = grouped ? '' : 'none';
   if (grouped) {
-    const beacons = [...new Set(display.map((r) => r.beacon))];
-    const allCollapsed = beacons.length > 0 && beacons.every((b) => collapsed.has(b));
+    const reqs = [...new Set(display.map((r) => r.request))];
+    const allCollapsed = reqs.length > 0 && reqs.every((b) => collapsed.has(b));
     caBtn.textContent = allCollapsed ? 'Expand all' : 'Collapse all';
   }
   $('empty').style.display = display.length ? 'none' : 'flex';
@@ -234,12 +279,12 @@ function render() {
 
 // Collapse all visible requests, or expand them all if everything is collapsed.
 function toggleCollapseAll() {
-  const beacons = [...new Set(filtered.map((r) => r.beacon))];
-  const allCollapsed = beacons.length > 0 && beacons.every((b) => collapsed.has(b));
+  const reqs = [...new Set(filtered.map((r) => r.request))];
+  const allCollapsed = reqs.length > 0 && reqs.every((b) => collapsed.has(b));
   if (allCollapsed) {
-    beacons.forEach((b) => collapsed.delete(b));
+    reqs.forEach((b) => collapsed.delete(b));
   } else {
-    beacons.forEach((b) => collapsed.add(b));
+    reqs.forEach((b) => collapsed.add(b));
   }
   render();
 }
@@ -253,7 +298,7 @@ function openDetail(id) {
     tr.classList.toggle('selected', tr.dataset.id === id);
   });
   $('detail').classList.add('open');
-  $('detail-title').textContent = `${r.event || 'event'}  ·  beacon ${r.beacon} · #${r.idx + 1}`;
+  $('detail-title').textContent = `${r.event || 'event'}  ·  ${providerLabel(r.provider)} · request ${r.request} · #${r.idx + 1}`;
   $('detail-raw').dataset.file = r.file;
   renderDetailProps(r);
   updateTickSelection();
@@ -274,15 +319,16 @@ function renderDetailProps(r) {
   const body = $('detail-body');
   body.innerHTML = '';
 
-  body.appendChild(sectionTitle('beacon'));
-  body.appendChild(kv('beacon #', r.beacon));
-  body.appendChild(kv('event index in beacon', r.idx));
+  body.appendChild(sectionTitle('request'));
+  body.appendChild(kv('request #', r.request));
+  body.appendChild(kv('provider', providerLabel(r.provider)));
+  body.appendChild(kv('event index in request', r.idx));
   body.appendChild(kv('received', r.ts));
   body.appendChild(kv('upstream status', r.error ? `ERROR: ${r.error}` : (r.forwarded === false ? `${r.status} (not forwarded)` : r.status)));
   body.appendChild(kv('upstream host', r.upstream));
   body.appendChild(kv('log file', r.file));
 
-  const curatedKeys = columns.map((c) => c.key);
+  const curatedKeys = (columnsByProvider[r.provider] || []).map((c) => c.key);
   const all = Object.keys(r.props);
   const rest = all.filter((k) => !curatedKeys.includes(k)).sort();
   const ordered = [...curatedKeys.filter((k) => k in r.props), ...rest];
@@ -291,13 +337,13 @@ function renderDetailProps(r) {
   for (const k of ordered) body.appendChild(kv(k, r.props[k]));
 }
 
-async function showRawBeacon(file) {
+async function showRawRequest(file) {
   if (!file) return;
   try {
     const txt = await fetch('/api/entry?file=' + encodeURIComponent(file)).then((r) => r.text());
     const body = $('detail-body');
     body.innerHTML = '';
-    body.appendChild(sectionTitle('raw logged beacon (minified keys, as sent to Mux)'));
+    body.appendChild(sectionTitle('raw logged request (as received; body exactly as sent upstream)'));
     const pre = document.createElement('pre');
     pre.className = 'v';
     pre.style.padding = '8px 12px';
@@ -517,14 +563,28 @@ function initTimelineTooltip() {
   wrap.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
 }
 
-// ---- event-type dropdown ----
+// ---- provider / event-type dropdowns ----
+function refreshProviderFilter() {
+  const sel = $('provider-filter');
+  sel.innerHTML = '<option value="">All providers</option>' +
+    providers.map((p) => `<option value="${p.id}">${escapeHtml(p.label)}</option>`).join('');
+  if (!providers.some((p) => p.id === providerFilter)) providerFilter = '';
+  sel.value = providerFilter;
+}
+
+// Event names of the selected provider (or of all providers when none is selected).
 function refreshEventFilter() {
   const sel = $('event-filter');
   const cur = sel.value;
-  const types = [...eventTypes].sort();
+  const types = new Set();
+  for (const [prov, set] of eventTypes) {
+    if (providerFilter && prov !== providerFilter) continue;
+    for (const t of set) types.add(t);
+  }
+  const sorted = [...types].sort();
   sel.innerHTML = '<option value="">All events</option>' +
-    types.map((t) => `<option value="${t}">${t}</option>`).join('');
-  if (types.includes(cur)) sel.value = cur;
+    sorted.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+  sel.value = sorted.includes(cur) ? cur : '';
 }
 
 // ---- state / switches ----
@@ -547,7 +607,7 @@ function applyState(state) {
   setSwitch('toggle-fwd', forwarding, forwarding ? 'forwarding' : 'not forwarding');
 
   $('stat-events').textContent = state.events ?? rows.length;
-  $('stat-beacons').textContent = state.beacons ?? 0;
+  $('stat-requests').textContent = state.requests ?? 0;
   $('stat-size').textContent = fmtBytes(state.diskBytes);
 
   if (state.clearViewAt && state.clearViewAt !== lastClearViewAt) {
@@ -560,7 +620,7 @@ function applyState(state) {
 
 // ---- ingest / poll ----
 function ingest(newRows, replace) {
-  if (replace) { rows = []; idSet.clear(); eventTypes = new Set(); lastId = null; }
+  if (replace) { rows = []; idSet.clear(); eventTypes = new Map(); lastId = null; }
   let added = 0;
   for (const r of newRows) {
     if (idSet.has(r.id)) continue;
@@ -568,7 +628,10 @@ function ingest(newRows, replace) {
     r._seq = rows.length + 1;
     r._search = searchBlob(r);
     rows.push(r);
-    if (r.event) eventTypes.add(r.event);
+    if (r.event) {
+      if (!eventTypes.has(r.provider)) eventTypes.set(r.provider, new Set());
+      eventTypes.get(r.provider).add(r.event);
+    }
     added++;
   }
   if (rows.length) lastId = rows[rows.length - 1].id;
@@ -580,7 +643,11 @@ async function poll() {
   try {
     const url = lastId ? '/api/events?since=' + encodeURIComponent(lastId) : '/api/events';
     const data = await fetch(url).then((r) => r.json());
-    if (!columns.length && data.columns) { columns = data.columns; renderHead(); }
+    if (!providers.length && data.providers) {
+      providers = data.providers;
+      columnsByProvider = data.columns || {};
+      refreshProviderFilter();
+    }
     applyState(data.state);
 
     if (data.total < rows.length) {
@@ -640,6 +707,7 @@ async function openConfig() {
   const cfg = await fetch('/api/config').then((r) => r.json());
   $('cfg-port').value = cfg.port;
   $('cfg-url-prefix').value = cfg.urlPrefix || '';
+  $('cfg-routes').value = (cfg.routes || []).map((r) => `${r.prefix} ${r.upstream}`).join('\n');
   $('cfg-clear-view-url').value = clearViewUrl(cfg);
   $('cfg-error').textContent = '';
   $('config-modal').classList.add('open');
@@ -649,6 +717,10 @@ async function saveConfig() {
   const body = {
     port: Number($('cfg-port').value),
     urlPrefix: $('cfg-url-prefix').value,
+    routes: $('cfg-routes').value.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+      const [prefix, upstream] = l.split(/[\s=]+/);
+      return { prefix, upstream };
+    }),
   };
   const res = await fetch('/api/config', {
     method: 'POST',
@@ -664,6 +736,12 @@ async function saveConfig() {
 function init() {
   $('filter').addEventListener('input', render);
   $('event-filter').addEventListener('change', render);
+  $('provider-filter').addEventListener('change', (e) => {
+    providerFilter = e.target.value;
+    localStorage.setItem('logger.provider', providerFilter);
+    refreshEventFilter();
+    render();
+  });
   $('group-requests').addEventListener('change', render);
   $('collapse-all').addEventListener('click', toggleCollapseAll);
   $('tl-view').addEventListener('change', renderTimeline);
@@ -684,7 +762,7 @@ function init() {
   $('toggle-rec').addEventListener('click', () => post(recording ? '/api/recording/stop' : '/api/recording/start'));
   $('toggle-fwd').addEventListener('click', () => post(forwarding ? '/api/forwarding/stop' : '/api/forwarding/start'));
   $('clear-disk').addEventListener('click', async () => {
-    const ok = await confirmDialog('Delete logs', 'Permanently delete all logged beacon files from disk?');
+    const ok = await confirmDialog('Delete logs', 'Permanently delete all logged request files from disk?');
     if (!ok) return;
     const res = await fetch('/api/logs/clear', { method: 'POST' }).then((r) => r.json());
     ingest([], true);
@@ -695,7 +773,7 @@ function init() {
   });
 
   $('detail-close').addEventListener('click', closeDetail);
-  $('detail-raw').addEventListener('click', (e) => showRawBeacon(e.currentTarget.dataset.file));
+  $('detail-raw').addEventListener('click', (e) => showRawRequest(e.currentTarget.dataset.file));
 
   $('config-btn').addEventListener('click', openConfig);
   $('cfg-cancel').addEventListener('click', () => $('config-modal').classList.remove('open'));

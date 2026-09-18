@@ -124,21 +124,8 @@ const CURATED_COLUMNS = [
   { key: 'player_error_message', label: 'error_message', width: 200 },
 ];
 
-// Pull the events out of a logged beacon entry. Returns [] for non-Mux entries.
-function extractEvents(entry) {
-  const body = entry && entry.request && entry.request.body;
-  const events = body && Array.isArray(body.events) ? body.events : null;
-  return events || [];
-}
-
-function isMuxEntry(entry) {
-  return extractEvents(entry).length > 0;
-}
-
 module.exports = {
   decodeKey,
   decodeEvent,
-  extractEvents,
-  isMuxEntry,
   CURATED_COLUMNS,
 };

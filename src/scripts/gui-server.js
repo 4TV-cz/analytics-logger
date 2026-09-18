@@ -2,7 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { CURATED_COLUMNS } = require('./mux');
+const { providerInfo, providerColumns } = require('./providers');
 
 const STATIC_MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -73,7 +73,7 @@ class GuiServer {
       ...this.proxy.state(),
       port: cfg.port,
       events: this.logStore.getEventCount(),
-      beacons: this.logStore.getBeaconCount(),
+      requests: this.logStore.getRequestCount(),
       diskBytes: this.logStore.getDiskBytes(),
     };
   }
@@ -115,7 +115,7 @@ class GuiServer {
     if (req.method === 'GET' && p === '/styles.css') return this._serveStatic(res, 'styles.css');
     if (req.method === 'GET' && p === '/app.js') return this._serveStatic(res, 'app.js');
 
-    // Decoded event rows (one per Mux event) plus the curated grid columns.
+    // Decoded event rows (one per analytics event) plus the per-provider grid columns.
     if (req.method === 'GET' && p === '/api/events') {
       const sinceId = url.searchParams.get('since');
       const rows = this.logStore.getEventRows();
@@ -125,7 +125,8 @@ class GuiServer {
         if (idx !== -1) slice = rows.slice(idx + 1);
       }
       return this._sendJson(res, 200, {
-        columns: CURATED_COLUMNS,
+        providers: providerInfo(),
+        columns: providerColumns(),
         total: rows.length,
         rows: slice,
         state: this._currentState(),
@@ -152,7 +153,7 @@ class GuiServer {
         return this._sendJson(res, 400, { error: err.message, config: this.config.get(), state: this._currentState() });
       }
     }
-    // Raw logged beacon (full request/response JSON for one file).
+    // Raw logged request (full request/response JSON for one file).
     if (req.method === 'GET' && p === '/api/entry') {
       const data = this.logStore.readEntry(url.searchParams.get('file') || '');
       if (!data) { res.writeHead(404); res.end('not found'); return; }

@@ -159,6 +159,16 @@ tbody tr.group-header:hover td { background: #212a3b; }
 .ev.err { background: #3a1518; color: #ff8a86; }       /* error/aderror */
 .ev.life { background: #2c2350; color: #b9a8ff; }      /* playerready/hb */
 
+/* provider tag (grid column) */
+.prov {
+  display: inline-block; padding: 0 6px; border-radius: 4px;
+  font-size: 10px; font-weight: 600; letter-spacing: .2px;
+  background: #262b36; color: var(--muted);
+}
+.prov.mux { background: #2b1f3d; color: #d2b3ff; }
+.prov.ga { background: #3a2c12; color: #f0c060; }
+.prov.mparticle { background: #16361f; color: #79d68c; }
+
 #empty {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -305,7 +315,12 @@ footer {
 .modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .config-body .field { margin-bottom: 14px; }
 .config-body label { display: block; color: var(--text); margin-bottom: 4px; }
-.config-body input { width: 100%; }
+.config-body input, .config-body textarea { width: 100%; }
+.config-body textarea {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 8px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: vertical;
+}
 .help { color: var(--muted); font-size: 11px; margin-top: 4px; }
 .help code { background: var(--panel-2); padding: 1px 4px; border-radius: 3px; }
 .err { color: var(--red); font-size: 12px; min-height: 16px; }

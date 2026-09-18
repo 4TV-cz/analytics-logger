@@ -37,7 +37,19 @@ function getPrefixPath(urlPrefix) {
   catch { return urlPrefix.startsWith('/') ? urlPrefix : '/' + urlPrefix; }
 }
 
-function parseUpstreamFromUrl(reqUrl, urlPrefix) {
+// Path-route fallback: "/mparticle/v2/x" + {prefix:"/mparticle", upstream:"https://host"}
+// -> https://host/v2/x. Longest prefix wins.
+function _upstreamFromRoutes(proxyPath, routes) {
+  const sorted = [...(routes || [])].sort((a, b) => b.prefix.length - a.prefix.length);
+  for (const r of sorted) {
+    if (proxyPath === r.prefix || proxyPath.startsWith(r.prefix + '/') || proxyPath.startsWith(r.prefix + '?')) {
+      return _upstreamFromFullUrl(r.upstream + proxyPath.slice(r.prefix.length));
+    }
+  }
+  return null;
+}
+
+function parseUpstreamFromUrl(reqUrl, urlPrefix, routes) {
   if (!urlPrefix) return _upstreamFromFullUrl(reqUrl);
 
   // Match on the path portion of urlPrefix only (e.g. "/;"). The proxy may
@@ -50,8 +62,8 @@ function parseUpstreamFromUrl(reqUrl, urlPrefix) {
   const pathStart = reqUrl.indexOf('/', schemeEnd + 3);
   if (pathStart < 0) return null;
   const proxyPath = reqUrl.slice(pathStart);
-  if (!proxyPath.startsWith(prefixPath)) return null;
-  return _upstreamFromFullUrl(proxyPath.slice(prefixPath.length));
+  if (!proxyPath.startsWith(prefixPath)) return _upstreamFromRoutes(proxyPath, routes);
+  return _upstreamFromFullUrl(proxyPath.slice(prefixPath.length)) || _upstreamFromRoutes(proxyPath, routes);
 }
 
 function buildUpstreamHeaders(reqHeaders, upstreamHost) {

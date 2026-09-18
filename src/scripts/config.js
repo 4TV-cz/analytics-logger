@@ -11,6 +11,12 @@ class Config {
       maxBodyBytes: Number(process.env.MAX_BODY_BYTES) || 10 * 1024 * 1024,
       urlPrefix: process.env.URL_PREFIX || '/;',
       clearViewPattern: process.env.CLEAR_VIEW_PATTERN || '/session/clear',
+      // Path routes for SDKs that can only be given a base URL (no `/;https://`
+      // prefix): a request to <prefix>/rest is forwarded to <upstream>/rest.
+      routes: [
+        { prefix: '/mparticle', upstream: 'https://nativesdks.mparticle.com' },
+        { prefix: '/ga', upstream: 'https://www.google-analytics.com' },
+      ],
     };
     this.current = this._load();
   }
@@ -63,6 +69,16 @@ class Config {
     if ('clearViewPattern' in input) {
       if (typeof input.clearViewPattern !== 'string') throw new Error('clearViewPattern must be a string');
       next.clearViewPattern = input.clearViewPattern;
+    }
+    if ('routes' in input) {
+      if (!Array.isArray(input.routes)) throw new Error('routes must be an array');
+      next.routes = input.routes.map((r, i) => {
+        const prefix = String(r?.prefix || '').trim();
+        const upstream = String(r?.upstream || '').trim().replace(/\/+$/, '');
+        if (!prefix.startsWith('/') || prefix.length < 2) throw new Error(`route ${i + 1}: prefix must start with "/"`);
+        if (!/^https?:\/\/[^/\s]+$/i.test(upstream)) throw new Error(`route ${i + 1}: upstream must be an http(s) origin like https://host`);
+        return { prefix: prefix.replace(/\/+$/, ''), upstream };
+      });
     }
     const changes = {
       portChanged: next.port !== this.current.port,

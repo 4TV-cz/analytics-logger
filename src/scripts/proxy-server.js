@@ -2,14 +2,13 @@ const http = require('http');
 const path = require('path');
 const { parseUpstreamFromUrl, buildUpstreamHeaders, buildClientHeaders, callUpstream } = require('./proxy');
 const { parseIfJson } = require('./body-utils');
-const { isMuxEntry } = require('./mux');
 
-// Transparent proxy for the Roku Mux SDK beacon endpoint. The device points
-// only its Mux reporting traffic here (everything else goes through Charles),
-// reaching us as e.g. http://<proxy>/;https://<env>.litix.io. We forward every
-// beacon upstream to Mux unchanged and log the ones that carry events. With
-// forwarding off, beacons are still logged but terminate here (200 OK) and
-// never reach Mux.
+// Transparent proxy for analytics endpoints (Mux, Google Analytics, mParticle
+// or anything else). The device points its reporting traffic here, reaching us
+// as e.g. http://<proxy>/;https://<env>.litix.io. We forward every request
+// upstream unchanged and log all of them; providers.js decodes the ones it
+// recognises into events. With forwarding off, requests are still logged but
+// terminate here (200 OK) and never reach the upstream.
 class ProxyServer {
   constructor({ config, logStore }) {
     this.config = config;
@@ -67,12 +66,16 @@ class ProxyServer {
       }
 
       const buf = Buffer.concat(chunks, bytes);
-      const target = parseUpstreamFromUrl(req.url, cfg.urlPrefix);
+      const target = parseUpstreamFromUrl(req.url, cfg.urlPrefix, cfg.routes);
 
+      // JSON bodies are stored parsed (`body`); anything else is kept as text
+      // (`bodyText`) so providers with line-based formats (GA) can decode it.
       let parsedBody = null;
+      let bodyText = null;
       if (buf.length) {
         const body = parseIfJson(buf.toString('utf8'), req.headers['content-type'] || '');
-        parsedBody = typeof body === 'string' ? null : body;
+        if (typeof body === 'string') bodyText = body;
+        else parsedBody = body;
       }
 
       const requestPart = {
@@ -87,33 +90,34 @@ class ProxyServer {
         bodyBytes: bytes,
         bodyTruncated: truncated,
         body: parsedBody,
+        bodyText,
         upstream: target,
       };
 
       const finish = (responsePart, clientStatus, clientHeaders, clientBody) => {
         const entry = { request: requestPart, response: responsePart };
-        // Only Mux beacons (bodies with an events array) are recorded; any other
-        // traffic is still forwarded but never written to disk.
-        let file;
-        if (this.isRecording && isMuxEntry(entry)) {
+        // Every request is recorded (unless recording is paused); the console
+        // line says which provider it was decoded as and how many events it held.
+        let written = null;
+        if (this.isRecording) {
           try {
-            file = this.logStore.writeEntry(entry);
+            written = this.logStore.writeEntry(entry);
           } catch (err) {
             console.error('[proxy] write error:', err.message);
           }
         }
-        const eventCount = entry.request.body?.events?.length || 0;
-        const recTag = file ? ` (${eventCount} events -> ${path.basename(file)})`
-          : (this.isRecording ? ' [not a mux beacon]' : ' [paused]');
+        const recTag = written
+          ? ` (${written.provider}: ${written.count} events -> ${path.basename(written.file)})`
+          : (this.isRecording ? '' : ' [paused]');
         const fwdTag = responsePart.forwarded === false ? ' [not forwarded]' : '';
         console.log(`[${requestPart.timestamp}] ${requestPart.method} ${target ? target.url : requestPart.url} -> ${responsePart.statusCode ?? responsePart.error ?? 'NO_UPSTREAM'}${fwdTag}${recTag}`);
         res.writeHead(clientStatus, clientHeaders);
         res.end(clientBody);
       };
 
-      // Forwarding off: answer the device ourselves with an empty 200 (what
-      // Mux would return) so the SDK keeps sending, and record the beacon
-      // without ever contacting the upstream.
+      // Forwarding off: answer the device ourselves with an empty 200 so the
+      // SDK keeps sending, and record the request without ever contacting
+      // the upstream.
       if (!this.isForwarding) {
         finish(
           { forwarded: false, statusCode: 200, statusMessage: 'OK', headers: {}, bodyBytes: 0, body: '' },

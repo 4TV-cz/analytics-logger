@@ -10,15 +10,16 @@
     <div class="toolbar">
       <h1>Analytics Logger</h1>
       <button class="switch" id="toggle-proxy" role="switch" aria-checked="true" title="Start / stop the proxy listener"><span class="track"><span class="knob"></span></span><span class="switch-label" id="proxy-label">…</span></button>
-      <button class="switch rec" id="toggle-rec" role="switch" aria-checked="true" title="Pause / resume writing beacons to disk"><span class="track"><span class="knob"></span></span><span class="switch-label" id="rec-label">…</span></button>
+      <button class="switch rec" id="toggle-rec" role="switch" aria-checked="true" title="Pause / resume writing requests to disk"><span class="track"><span class="knob"></span></span><span class="switch-label" id="rec-label">…</span></button>
       <button class="switch fwd" id="toggle-fwd" role="switch" aria-checked="true" title="Forwarding on: beacons are relayed to the Mux URL in the request path. Off: beacons are logged but stop here (200 OK) and never reach Mux."><span class="track"><span class="knob"></span></span><span class="switch-label" id="fwd-label">…</span></button>
       <button id="clear-disk" class="danger">Delete logs</button>
+      <select id="provider-filter" title="Analytics provider: filters the rows and picks the column layout"><option value="">All providers</option></select>
       <input type="text" id="filter" placeholder="filter events (any field)" style="margin-left:auto" />
       <select id="event-filter"><option value="">All events</option></select>
-      <label title="Collapse the events of each request (beacon) under a header"><input type="checkbox" id="group-requests" /> group by request</label>
+      <label title="Collapse the events of each request under a header"><input type="checkbox" id="group-requests" /> group by request</label>
       <button id="collapse-all" style="display:none" title="Collapse / expand all requests">Collapse all</button>
       <label><input type="checkbox" id="autoscroll" checked /> autoscroll</label>
-      <label class="stepper" title="Render only the most recent N events (0 = show all). All beacons stay on disk.">
+      <label class="stepper" title="Render only the most recent N events (0 = show all). All requests stay on disk.">
         show last <input type="number" id="event-cap" min="0" step="100" value="500" /> events
       </label>
       <button id="config-btn" title="Settings">⚙</button>
@@ -43,12 +44,17 @@
         <div class="field">
           <label for="cfg-port">Proxy port</label>
           <input type="number" id="cfg-port" min="1" max="65535" />
-          <div class="help">Port the Roku device sends Mux beacons to. Proxy restarts on save.</div>
+          <div class="help">Port the device sends analytics requests to. Proxy restarts on save.</div>
         </div>
         <div class="field">
           <label for="cfg-url-prefix">Client URL prefix</label>
           <input type="text" id="cfg-url-prefix" placeholder="e.g. /;" />
-          <div class="help">Separator between the proxy address and the upstream Mux URL in the request path (the SDK sends <code>/;https://&lt;env&gt;.litix.io</code>).</div>
+          <div class="help">Separator between the proxy address and the upstream URL in the request path (e.g. <code>/;https://&lt;env&gt;.litix.io</code>, <code>/;https://www.google-analytics.com</code>, <code>/;https://nativesdks.mparticle.com</code>).</div>
+        </div>
+        <div class="field">
+          <label for="cfg-routes">Path routes</label>
+          <textarea id="cfg-routes" rows="3" spellcheck="false" placeholder="/mparticle https://nativesdks.mparticle.com"></textarea>
+          <div class="help">For SDKs that only take a base URL (e.g. the mParticle Roku SDK): one <code>/prefix https://upstream-host</code> per line. A request to <code>http://&lt;proxy&gt;:8889/mparticle/v2/…</code> is forwarded to <code>https://nativesdks.mparticle.com/v2/…</code>.</div>
         </div>
         <div class="field">
           <label for="cfg-clear-view-url">Clear session URL</label>
@@ -72,12 +78,12 @@
         </thead>
         <tbody id="rows"></tbody>
       </table>
-      <div id="empty">No Mux events yet. Waiting for beacons…</div>
+      <div id="empty">No events yet. Waiting for requests…</div>
     </div>
     <div id="detail">
       <div id="detail-head">
         <span class="title" id="detail-title"></span>
-        <button id="detail-raw" title="View raw logged beacon JSON">raw beacon</button>
+        <button id="detail-raw" title="View the raw logged request JSON">raw request</button>
         <button id="detail-close" title="Close (Esc)">✕ Close</button>
       </div>
       <div id="detail-body"></div>
@@ -112,7 +118,7 @@
   <footer id="statusbar">
     <span class="status-item"><span class="status-label">Events:</span> <span id="stat-events">0</span></span>
     <span class="status-sep">|</span>
-    <span class="status-item"><span class="status-label">Beacons:</span> <span id="stat-beacons">0</span></span>
+    <span class="status-item"><span class="status-label">Requests:</span> <span id="stat-requests">0</span></span>
     <span class="status-sep">|</span>
     <span class="status-item"><span class="status-label">Shown:</span> <span id="stat-shown">0</span></span>
     <span class="status-sep">|</span>

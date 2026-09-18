@@ -1,13 +1,20 @@
 # Analytics Logger
 
-Local proxy + viewer for **player analytics beacons** from any player — Roku, web players, smart TVs, or any other frontend device that reports to Mux. Mux SDKs send their analytics beacons with minified property names (`pcycd` instead of `player_country_code`); this tool sits between the player and `litix.io`, forwards every beacon upstream unchanged, logs each one to disk, and renders every Mux event on its own row with **decoded property names**. Mux is the first supported endpoint; **mParticle** and **Google Analytics** are planned next.
+Local proxy + viewer for **player analytics requests** from any player — Roku, web players, smart TVs, or any other frontend device. The tool sits between the player and the analytics endpoint, forwards every request upstream unchanged, logs each one to disk, and renders every analytics event on its own row with **decoded property names**. Supported providers:
+
+- **Mux** (`*.litix.io`) — beacons with minified property names (`pcycd` → `player_country_code`) are fully decoded.
+- **Google Analytics** (`google-analytics.com`, `analytics.google.com`) — GA4 gtag (`/g/collect`, one event per body line), GA4 Measurement Protocol (`/mp/collect` JSON) and Universal Analytics (`/collect`, `/batch`); short keys are expanded (`en` → `event_name`, `cid` → `client_id`, `ep.*` event params, `up.*` user properties).
+- **mParticle** (`*.mparticle.com`) — v3 batches (`events[].event_type/data`) and legacy v2 batches (`msgs[]`, e.g. the Roku SDK; `dt`/`n`/`et`/`attrs` are expanded).
+- **Other** — anything else is still logged, one row per request, with the URL, query and JSON body flattened into properties.
+
+A **provider dropdown** in the toolbar filters the grid to one provider and switches the column layout to that provider's curated columns ("All providers" shows the union of the layouts present).
 
 ![Analytics Logger](assets/app_screenshot.png)
 
 ```
 player / device ──► Analytics Logger proxy (0.0.0.0:8889) ──► https://<env>.litix.io
 (Roku, web, TV)          │
-                         ├── logs/  (one JSON file per beacon)
+                         ├── logs/  (one JSON file per request)
                          └── GUI    (http://localhost:8080)
 ```
 
@@ -44,6 +51,10 @@ Where to set it, per client:
 - **Roku SDK** — set the beacon/base URL to `http://<your-LAN-IP>:8889/;https://<env>.litix.io`.
 - **Web (`mux-embed`, player SDKs)** — set `beaconCollectionDomain` / beacon domain so requests hit `http://<your-LAN-IP>:8889/;https://<env>.litix.io` (or use browser devtools/proxy rules to rewrite the litix.io request URL).
 - **Other devices** — anything that can be pointed at a custom HTTP endpoint (directly or via a charles/mitm rewrite rule) and sends standard Mux beacons.
+
+The same scheme works for every provider — the part after the prefix is just the real upstream URL, e.g. `http://<your-LAN-IP>:8889/;https://www.google-analytics.com` for GA. Requests to hosts the tool doesn't recognise are forwarded and logged too (shown under the *Other* provider).
+
+Some SDKs can only be given a **base URL** and append their own path (the mParticle Roku SDK posts to `<base>/v2/<key>/events`). For those, use a **path route** instead of the `/;` prefix: the ⚙ dialog has a *Path routes* list (defaults: `/mparticle → https://nativesdks.mparticle.com`, `/ga → https://www.google-analytics.com`), so pointing the SDK at `http://<your-LAN-IP>:8889/mparticle` forwards to `https://nativesdks.mparticle.com/v2/<key>/events`.
 
 If your SDK composes the URL differently, adjust the **Client URL prefix** in ⚙ config to match: `/;` when the client inserts a `;` separator (Roku default), `/` for clients that send `http://<proxy>/https://...`, or empty for clients using the tool as a plain HTTP proxy with absolute-form URLs.
 
@@ -105,11 +116,11 @@ Either way, then point the player's Mux beacon URL at `http://<your-LAN-IP>:8889
 
 ## The GUI
 
-- **Grid** — one row per decoded Mux event, with curated columns (event, sequence numbers, playhead, video title, view id, error code/message). Click a row for the full decoded property list and the raw logged beacon JSON.
-- **Filtering** — free-text filter across all fields, event-type dropdown, optional grouping by request (beacon) with collapsible headers.
+- **Grid** — one row per decoded analytics event, with per-provider curated columns (Mux: event, sequence numbers, playhead, video title, view id, error code/message; GA: event, client/session id, page; mParticle: event, type, screen, session, mpid). Click a row for the full decoded property list and the raw logged request JSON.
+- **Filtering** — provider dropdown (also picks the column layout), free-text filter across all fields, event-type dropdown, optional grouping by request with collapsible headers.
 - **Viewer timeline** — Mux-style playback timeline per view (starting up / playing / rebuffering / seeking / ad / paused / failure), with a tick per event and a view selector.
 - **Controls** — start/stop the proxy, pause/resume recording, enable/disable forwarding, delete all logs, display cap ("show last N events" — display-only, nothing is deleted).
-- **Forwarding toggle** — on (default): each beacon is relayed to the Mux URL in the request path and the real response goes back to the player. Off: beacons terminate at this server — they are still logged and the player gets an empty `200 OK`, but nothing reaches Mux (handy for keeping test sessions out of the real dashboards). Locally terminated beacons are marked "not forwarded" in the grid and detail panel.
+- **Forwarding toggle** — on (default): each request is relayed to its upstream and the real response goes back to the player. Off: requests terminate at this server — they are still logged and the player gets an empty `200 OK`, but nothing reaches the analytics backend (handy for keeping test sessions out of the real dashboards). Locally terminated requests are marked "not forwarded" in the grid and detail panel.
 - **⚙ Settings dialog** — change the **proxy port** and the client URL prefix (the proxy restarts automatically on save), and view the read-only clear-session URL.
 - **Clear session URL** — calling `http://<proxy-ip>:8889/session/clear` (from the device or a browser) deletes all stored logs and resets the grid without forwarding anything. Useful as a test-run separator; the exact URL is shown in the ⚙ config dialog.
 
@@ -141,12 +152,12 @@ The GUI is a thin client over these endpoints (all served by the GUI port):
 
 | Method & path | Purpose |
 | --- | --- |
-| `GET /api/events[?since=<id>]` | Decoded event rows (incremental with `since`) + curated columns + state |
+| `GET /api/events[?since=<id>]` | Decoded event rows (incremental with `since`) + provider list + per-provider columns + state |
 | `GET /api/state` | Proxy/recording/forwarding state, counts, disk usage |
 | `GET /api/config` / `POST /api/config` | Read / update config (proxy restarts on port/host change) |
-| `GET /api/entry?file=<name>` | Raw logged beacon JSON for one file |
+| `GET /api/entry?file=<name>` | Raw logged request JSON for one file |
 | `POST /api/proxy/start` / `POST /api/proxy/stop` | Start / stop the proxy listener |
-| `POST /api/recording/start` / `POST /api/recording/stop` | Resume / pause writing beacons to disk |
-| `POST /api/forwarding/start` / `POST /api/forwarding/stop` | Enable / disable relaying beacons to Mux (off: logged, answered 200 locally) |
-| `POST /api/logs/clear` | Delete all logged beacon files |
+| `POST /api/recording/start` / `POST /api/recording/stop` | Resume / pause writing requests to disk |
+| `POST /api/forwarding/start` / `POST /api/forwarding/stop` | Enable / disable relaying requests upstream (off: logged, answered 200 locally) |
+| `POST /api/logs/clear` | Delete all logged request files |
 
