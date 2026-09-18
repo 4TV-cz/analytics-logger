@@ -15,7 +15,7 @@ const ICON = path.join(__dirname, 'assets', process.platform === 'win32' ? 'icon
 // keep the data there so it travels with the app. Otherwise fall back to the
 // per-user data dir.
 const DATA_DIR = process.env.PORTABLE_EXECUTABLE_DIR
-  ? path.join(process.env.PORTABLE_EXECUTABLE_DIR, 'mux-logger-data')
+  ? path.join(process.env.PORTABLE_EXECUTABLE_DIR, 'analytics-logger-data')
   : app.getPath('userData');
 const LOG_DIR = path.join(DATA_DIR, 'logs');
 const CONFIG_FILE = path.join(DATA_DIR, 'config', 'config.json');
@@ -37,7 +37,7 @@ async function createWindow() {
   } catch (err) {
     await stopBackend();
     dialog.showErrorBox(
-      'Mux Logger failed to start',
+      'Analytics Logger failed to start',
       `Could not start the local servers:\n\n${err.message}\n\n` +
       'A previous copy may still be running. Close it (or reboot) and try again.'
     );
@@ -48,7 +48,7 @@ async function createWindow() {
   win = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: 'Mux Logger',
+    title: 'Analytics Logger',
     icon: ICON,
     webPreferences: {
       contextIsolation: true,

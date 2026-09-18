@@ -1,11 +1,11 @@
-# Mux Logger
+# Analytics Logger
 
-Local proxy + viewer for **Mux reporting beacons** from any player — Roku, web players, smart TVs, or any other frontend device that reports to Mux. Mux SDKs send their analytics beacons with minified property names (`pcycd` instead of `player_country_code`); this tool sits between the player and `litix.io`, forwards every beacon upstream unchanged, logs each one to disk, and renders every Mux event on its own row with **decoded property names**.
+Local proxy + viewer for **player analytics beacons** from any player — Roku, web players, smart TVs, or any other frontend device that reports to Mux. Mux SDKs send their analytics beacons with minified property names (`pcycd` instead of `player_country_code`); this tool sits between the player and `litix.io`, forwards every beacon upstream unchanged, logs each one to disk, and renders every Mux event on its own row with **decoded property names**. Mux is the first supported endpoint; **mParticle** and **Google Analytics** are planned next.
 
-![Mux Logger](assets/app_screenshot.png)
+![Analytics Logger](assets/app_screenshot.png)
 
 ```
-player / device ──► Mux Logger proxy (0.0.0.0:8889) ──► https://<env>.litix.io
+player / device ──► Analytics Logger proxy (0.0.0.0:8889) ──► https://<env>.litix.io
 (Roku, web, TV)          │
                          ├── logs/  (one JSON file per beacon)
                          └── GUI    (http://localhost:8080)
@@ -22,7 +22,7 @@ player / device ──► Mux Logger proxy (0.0.0.0:8889) ──► https://<env
 
 The device does not discover the proxy by itself — you must **update the Mux endpoint URL in the player/app configuration** so beacons are sent to this proxy instead of directly to `litix.io`:
 
-1. Start Mux Logger and note the proxy address: `<your-LAN-IP>` (the machine running this tool — it must be reachable from the device, same network) and the proxy port (`8889` by default, shown in the toolbar badge and the ⚙ dialog).
+1. Start Analytics Logger and note the proxy address: `<your-LAN-IP>` (the machine running this tool — it must be reachable from the device, same network) and the proxy port (`8889` by default, shown in the toolbar badge and the ⚙ dialog).
 2. Take the original Mux endpoint the player uses today, e.g. `https://<env>.litix.io`.
 3. Build the new endpoint by joining the three parts — proxy address, the **Client URL prefix** from the ⚙ config (default `/;`), and the original URL:
 
@@ -74,8 +74,8 @@ npm run electron               # run from source, window opens by itself
 
 # or build a self-contained distributable (no Node.js needed on the target machine):
 npm run electron:release            # builds for the OS you're on
-npm run electron:release -- --win   # portable .exe (x64) -> dist/MuxLogger-<version>-portable.exe
-npm run electron:release -- --mac   # dmg                 -> dist/MuxLogger-<version>.dmg
+npm run electron:release -- --win   # portable .exe (x64) -> dist/AnalyticsLogger-<version>-portable.exe
+npm run electron:release -- --mac   # dmg                 -> dist/AnalyticsLogger-<version>.dmg
 ```
 
 Anything after `--` is passed straight through to `electron-builder`, so one script covers every target. Either release can be built from either OS — the Windows `.exe` cross-builds fine from macOS, no wine required. Both are unsigned: Windows shows a SmartScreen warning, macOS requires right-click → Open (or `xattr -d com.apple.quarantine`) on first launch.
@@ -83,8 +83,8 @@ Anything after `--` is passed straight through to `electron-builder`, so one scr
 Where `logs/` and `config/` live depends on how you run it:
 
 - **From source** (`npm run web`, `npm run web:dev`, `npm run electron`) — the repo's own `logs/` and `config/` directories.
-- **Portable Windows build** — a `mux-logger-data` folder next to the `.exe`, so the data travels with the app.
-- **macOS dmg build** — `~/Library/Application Support/mux-logger/` (the app bundle itself is read-only).
+- **Portable Windows build** — an `analytics-logger-data` folder next to the `.exe`, so the data travels with the app.
+- **macOS dmg build** — `~/Library/Application Support/analytics-logger/` (the app bundle itself is read-only).
 
 Either way, then point the player's Mux beacon URL at `http://<your-LAN-IP>:8889/;https://<env>.litix.io` (see [Pointing a player at the proxy](#pointing-a-player-at-the-proxy)).
 

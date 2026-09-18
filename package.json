@@ -1,8 +1,8 @@
 {
-  "name": "mux-logger",
+  "name": "analytics-logger",
   "version": "1.0.0",
   "private": true,
-  "description": "Local proxy + viewer for Roku Mux reporting beacons. Forwards beacons to litix.io and renders each Mux event (decoded property names) on its own row.",
+  "description": "Local proxy + viewer for player analytics beacons (Mux today; mParticle and Google Analytics planned). Forwards beacons upstream unchanged and renders each event (decoded property names) on its own row.",
   "main": "electron-main.js",
   "scripts": {
     "free-ports": "node scripts/free-ports.js",
@@ -19,8 +19,8 @@
     "node": ">=18"
   },
   "build": {
-    "appId": "com.deltatre.mux-logger",
-    "productName": "Mux Logger",
+    "appId": "com.deltatre.analytics-logger",
+    "productName": "Analytics Logger",
     "directories": {
       "output": "dist"
     },
@@ -39,12 +39,12 @@
           "arch": ["x64"]
         }
       ],
-      "artifactName": "MuxLogger-${version}-portable.exe"
+      "artifactName": "AnalyticsLogger-${version}-portable.exe"
     },
     "mac": {
       "icon": "assets/icon.png",
       "target": "dmg",
-      "artifactName": "MuxLogger-${version}.${ext}"
+      "artifactName": "AnalyticsLogger-${version}.${ext}"
     }
   },
   "devDependencies": {
