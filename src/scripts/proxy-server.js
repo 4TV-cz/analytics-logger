@@ -7,13 +7,16 @@ const { isMuxEntry } = require('./mux');
 // Transparent proxy for the Roku Mux SDK beacon endpoint. The device points
 // only its Mux reporting traffic here (everything else goes through Charles),
 // reaching us as e.g. http://<proxy>/;https://<env>.litix.io. We forward every
-// beacon upstream to Mux unchanged and log the ones that carry events.
+// beacon upstream to Mux unchanged and log the ones that carry events. With
+// forwarding off, beacons are still logged but terminate here (200 OK) and
+// never reach Mux.
 class ProxyServer {
   constructor({ config, logStore }) {
     this.config = config;
     this.logStore = logStore;
     this.isListening = false;
     this.isRecording = true;
+    this.isForwarding = true;
     this.clearViewAt = null;
     this.server = http.createServer((req, res) => this._handle(req, res));
     this.server.on('clientError', (err, socket) => {
@@ -102,10 +105,24 @@ class ProxyServer {
         const eventCount = entry.request.body?.events?.length || 0;
         const recTag = file ? ` (${eventCount} events -> ${path.basename(file)})`
           : (this.isRecording ? ' [not a mux beacon]' : ' [paused]');
-        console.log(`[${requestPart.timestamp}] ${requestPart.method} ${target ? target.url : requestPart.url} -> ${responsePart.statusCode ?? responsePart.error ?? 'NO_UPSTREAM'}${recTag}`);
+        const fwdTag = responsePart.forwarded === false ? ' [not forwarded]' : '';
+        console.log(`[${requestPart.timestamp}] ${requestPart.method} ${target ? target.url : requestPart.url} -> ${responsePart.statusCode ?? responsePart.error ?? 'NO_UPSTREAM'}${fwdTag}${recTag}`);
         res.writeHead(clientStatus, clientHeaders);
         res.end(clientBody);
       };
+
+      // Forwarding off: answer the device ourselves with an empty 200 (what
+      // Mux would return) so the SDK keeps sending, and record the beacon
+      // without ever contacting the upstream.
+      if (!this.isForwarding) {
+        finish(
+          { forwarded: false, statusCode: 200, statusMessage: 'OK', headers: {}, bodyBytes: 0, body: '' },
+          200,
+          { 'Content-Type': 'text/plain', 'content-length': '0' },
+          ''
+        );
+        return;
+      }
 
       if (!target) {
         finish(
@@ -190,8 +207,17 @@ class ProxyServer {
     this.isRecording = !!on;
   }
 
+  setForwarding(on) {
+    this.isForwarding = !!on;
+  }
+
   state() {
-    return { listening: this.isListening, recording: this.isRecording, clearViewAt: this.clearViewAt };
+    return {
+      listening: this.isListening,
+      recording: this.isRecording,
+      forwarding: this.isForwarding,
+      clearViewAt: this.clearViewAt,
+    };
   }
 }
 

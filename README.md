@@ -108,7 +108,8 @@ Either way, then point the player's Mux beacon URL at `http://<your-LAN-IP>:8889
 - **Grid** — one row per decoded Mux event, with curated columns (event, sequence numbers, playhead, video title, view id, error code/message). Click a row for the full decoded property list and the raw logged beacon JSON.
 - **Filtering** — free-text filter across all fields, event-type dropdown, optional grouping by request (beacon) with collapsible headers.
 - **Viewer timeline** — Mux-style playback timeline per view (starting up / playing / rebuffering / seeking / ad / paused / failure), with a tick per event and a view selector.
-- **Controls** — start/stop the proxy, pause/resume recording, delete all logs, display cap ("show last N events" — display-only, nothing is deleted).
+- **Controls** — start/stop the proxy, pause/resume recording, enable/disable forwarding, delete all logs, display cap ("show last N events" — display-only, nothing is deleted).
+- **Forwarding toggle** — on (default): each beacon is relayed to the Mux URL in the request path and the real response goes back to the player. Off: beacons terminate at this server — they are still logged and the player gets an empty `200 OK`, but nothing reaches Mux (handy for keeping test sessions out of the real dashboards). Locally terminated beacons are marked "not forwarded" in the grid and detail panel.
 - **⚙ Settings dialog** — change the **proxy port** and the client URL prefix (the proxy restarts automatically on save), and view the read-only clear-session URL.
 - **Clear session URL** — calling `http://<proxy-ip>:8889/session/clear` (from the device or a browser) deletes all stored logs and resets the grid without forwarding anything. Useful as a test-run separator; the exact URL is shown in the ⚙ config dialog.
 
@@ -141,10 +142,11 @@ The GUI is a thin client over these endpoints (all served by the GUI port):
 | Method & path | Purpose |
 | --- | --- |
 | `GET /api/events[?since=<id>]` | Decoded event rows (incremental with `since`) + curated columns + state |
-| `GET /api/state` | Proxy/recording state, counts, disk usage |
+| `GET /api/state` | Proxy/recording/forwarding state, counts, disk usage |
 | `GET /api/config` / `POST /api/config` | Read / update config (proxy restarts on port/host change) |
 | `GET /api/entry?file=<name>` | Raw logged beacon JSON for one file |
 | `POST /api/proxy/start` / `POST /api/proxy/stop` | Start / stop the proxy listener |
 | `POST /api/recording/start` / `POST /api/recording/stop` | Resume / pause writing beacons to disk |
+| `POST /api/forwarding/start` / `POST /api/forwarding/stop` | Enable / disable relaying beacons to Mux (off: logged, answered 200 locally) |
 | `POST /api/logs/clear` | Delete all logged beacon files |
 

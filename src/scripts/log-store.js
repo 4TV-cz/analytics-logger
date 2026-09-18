@@ -47,6 +47,7 @@ class LogStore {
     const ts = entry.request?.timestamp || null;
     const status = entry.response?.statusCode ?? null;
     const error = entry.response?.error || null;
+    const forwarded = entry.response?.forwarded !== false;
     const upstream = entry.request?.upstream?.host || entry.request?.url || null;
     events.forEach((raw, idx) => {
       const props = decodeEvent(raw);
@@ -61,6 +62,7 @@ class LogStore {
         viewerTime: Number.isFinite(viewerTime) ? viewerTime : null,
         status,
         error,
+        forwarded,
         upstream,
         event: props.event || raw.e || '',
         props,

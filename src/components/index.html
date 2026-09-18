@@ -11,8 +11,10 @@
       <h1>Analytics Logger</h1>
       <span class="badge" id="proxy-badge"><span class="dot"></span><span id="proxy-label">…</span></span>
       <span class="badge rec" id="rec-badge"><span class="dot"></span><span id="rec-label">…</span></span>
+      <span class="badge fwd" id="fwd-badge" title="Forwarding on: beacons are relayed to the Mux URL in the request path. Off: beacons are logged but stop here (200 OK) and never reach Mux."><span class="dot"></span><span id="fwd-label">…</span></span>
       <button id="toggle-proxy">Stop proxy</button>
       <button id="toggle-rec">Pause recording</button>
+      <button id="toggle-fwd" title="Forward beacons to the upstream Mux URL, or terminate them at this server">Disable forwarding</button>
       <button id="clear-disk" class="danger">Delete logs</button>
       <input type="text" id="filter" placeholder="filter events (any field)" style="margin-left:auto" />
       <select id="event-filter"><option value="">All events</option></select>

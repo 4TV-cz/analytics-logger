@@ -10,6 +10,7 @@ let selectedId = null;
 let eventTypes = new Set();
 let proxyListening = true;
 let recording = true;
+let forwarding = true;
 let lastClearViewAt = null;
 let stateInitialized = false; // suppresses the toast for a stale clear on first load
 let hiddenBefore = null;   // "clear view": hide rows up to and including this id
@@ -163,7 +164,7 @@ function buildGroupHeader(grp, colspan) {
   const first = grp.rows[0];
   const n = grp.rows.length;
   const meta = el('span', 'gh-meta',
-    `${fmtTime(first)} · ${n} event${n > 1 ? 's' : ''} · ${first.error ? 'ERR' : (first.status ?? '')}`);
+    `${fmtTime(first)} · ${n} event${n > 1 ? 's' : ''} · ${first.error ? 'ERR' : (first.status ?? '')}${first.forwarded === false ? ' · not forwarded' : ''}`);
 
   const badges = el('span', 'gh-badges');
   grp.rows.slice(0, MAX_HEADER_BADGES).forEach((r) => {
@@ -277,7 +278,7 @@ function renderDetailProps(r) {
   body.appendChild(kv('beacon #', r.beacon));
   body.appendChild(kv('event index in beacon', r.idx));
   body.appendChild(kv('received', r.ts));
-  body.appendChild(kv('upstream status', r.error ? `ERROR: ${r.error}` : r.status));
+  body.appendChild(kv('upstream status', r.error ? `ERROR: ${r.error}` : (r.forwarded === false ? `${r.status} (not forwarded)` : r.status)));
   body.appendChild(kv('upstream host', r.upstream));
   body.appendChild(kv('log file', r.file));
 
@@ -531,6 +532,7 @@ function applyState(state) {
   if (!state) return;
   proxyListening = !!state.listening;
   recording = !!state.recording;
+  forwarding = !!state.forwarding;
 
   const pb = $('proxy-badge');
   pb.className = 'badge ' + (proxyListening ? 'on' : 'off');
@@ -541,6 +543,11 @@ function applyState(state) {
   rb.className = 'badge rec ' + (recording ? 'on' : 'off');
   $('rec-label').textContent = recording ? 'recording' : 'paused';
   $('toggle-rec').textContent = recording ? 'Pause recording' : 'Resume recording';
+
+  const fb = $('fwd-badge');
+  fb.className = 'badge fwd ' + (forwarding ? 'on' : 'off');
+  $('fwd-label').textContent = forwarding ? 'forwarding' : 'not forwarding';
+  $('toggle-fwd').textContent = forwarding ? 'Disable forwarding' : 'Enable forwarding';
 
   $('stat-events').textContent = state.events ?? rows.length;
   $('stat-beacons').textContent = state.beacons ?? 0;
@@ -679,6 +686,7 @@ function init() {
 
   $('toggle-proxy').addEventListener('click', () => post(proxyListening ? '/api/proxy/stop' : '/api/proxy/start'));
   $('toggle-rec').addEventListener('click', () => post(recording ? '/api/recording/stop' : '/api/recording/start'));
+  $('toggle-fwd').addEventListener('click', () => post(forwarding ? '/api/forwarding/stop' : '/api/forwarding/start'));
   $('clear-disk').addEventListener('click', async () => {
     const ok = await confirmDialog('Delete logs', 'Permanently delete all logged beacon files from disk?');
     if (!ok) return;

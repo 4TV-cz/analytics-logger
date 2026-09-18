@@ -77,6 +77,7 @@ label { color: var(--muted); display: inline-flex; align-items: center; gap: 4px
 .badge.on .dot { background: var(--green); }
 .badge.off .dot { background: var(--red); }
 .badge.rec.on .dot { background: var(--red); }
+.badge.fwd.off .dot { background: var(--amber); }
 
 main { flex: 1 1 auto; display: flex; min-height: 0; }
 

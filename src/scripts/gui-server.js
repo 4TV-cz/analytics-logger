@@ -176,6 +176,14 @@ class GuiServer {
       this.proxy.setRecording(false);
       return this._sendJson(res, 200, this._currentState());
     }
+    if (req.method === 'POST' && p === '/api/forwarding/start') {
+      this.proxy.setForwarding(true);
+      return this._sendJson(res, 200, this._currentState());
+    }
+    if (req.method === 'POST' && p === '/api/forwarding/stop') {
+      this.proxy.setForwarding(false);
+      return this._sendJson(res, 200, this._currentState());
+    }
     if (req.method === 'POST' && p === '/api/logs/clear') {
       const deleted = this.logStore.clearAll();
       return this._sendJson(res, 200, { deleted, ...this._currentState() });
