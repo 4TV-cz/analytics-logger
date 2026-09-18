@@ -122,8 +122,17 @@ tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
 tbody td.muted { color: var(--muted); }
 
 tbody tr { cursor: pointer; }
-tbody tr:hover td { background: #1a1e27; }
-tbody tr.selected td { background: #233047 !important; }
+tbody tr:hover td { background: #1d222d; }
+
+/* selected row: inverse (accent background, light text) so it stands out from hover */
+tbody tr.selected td {
+  background: var(--accent-2) !important;
+  color: #fff;
+  border-bottom-color: var(--accent-2);
+}
+tbody tr.selected td.muted { color: #cfe0ff; }
+tbody tr.selected td:first-child { box-shadow: inset 4px 0 0 #fff; }
+tbody tr.selected .ev, tbody tr.selected .prov { background: rgba(255,255,255,.18); color: #fff; }
 
 /* request (beacon) group headers */
 tbody tr.group-header { cursor: pointer; }
