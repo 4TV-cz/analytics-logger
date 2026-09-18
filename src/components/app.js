@@ -527,27 +527,24 @@ function refreshEventFilter() {
   if (types.includes(cur)) sel.value = cur;
 }
 
-// ---- state / badges ----
+// ---- state / switches ----
+function setSwitch(id, on, label) {
+  const sw = $(id);
+  sw.classList.toggle('on', on);
+  sw.classList.toggle('off', !on);
+  sw.setAttribute('aria-checked', String(on));
+  sw.querySelector('.switch-label').textContent = label;
+}
+
 function applyState(state) {
   if (!state) return;
   proxyListening = !!state.listening;
   recording = !!state.recording;
   forwarding = !!state.forwarding;
 
-  const pb = $('proxy-badge');
-  pb.className = 'badge ' + (proxyListening ? 'on' : 'off');
-  $('proxy-label').textContent = proxyListening ? `proxy :${state.port}` : 'proxy off';
-  $('toggle-proxy').textContent = proxyListening ? 'Stop proxy' : 'Start proxy';
-
-  const rb = $('rec-badge');
-  rb.className = 'badge rec ' + (recording ? 'on' : 'off');
-  $('rec-label').textContent = recording ? 'recording' : 'paused';
-  $('toggle-rec').textContent = recording ? 'Pause recording' : 'Resume recording';
-
-  const fb = $('fwd-badge');
-  fb.className = 'badge fwd ' + (forwarding ? 'on' : 'off');
-  $('fwd-label').textContent = forwarding ? 'forwarding' : 'not forwarding';
-  $('toggle-fwd').textContent = forwarding ? 'Disable forwarding' : 'Enable forwarding';
+  setSwitch('toggle-proxy', proxyListening, proxyListening ? `proxy :${state.port}` : 'proxy off');
+  setSwitch('toggle-rec', recording, recording ? 'recording' : 'paused');
+  setSwitch('toggle-fwd', forwarding, forwarding ? 'forwarding' : 'not forwarding');
 
   $('stat-events').textContent = state.events ?? rows.length;
   $('stat-beacons').textContent = state.beacons ?? 0;
@@ -594,8 +591,7 @@ async function poll() {
       render();
     }
   } catch {
-    $('proxy-badge').className = 'badge off';
-    $('proxy-label').textContent = 'disconnected';
+    setSwitch('toggle-proxy', false, 'disconnected');
   }
 }
 

@@ -67,17 +67,28 @@ label { color: var(--muted); display: inline-flex; align-items: center; gap: 4px
 .stepper { gap: 5px; }
 #event-cap { width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
 
-.badge {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 3px 8px; border-radius: 999px;
+.switch {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 3px 10px 3px 4px; border-radius: 999px;
   background: var(--panel-2); border: 1px solid var(--border);
   font-size: 11px; color: var(--muted);
 }
-.badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
-.badge.on .dot { background: var(--green); }
-.badge.off .dot { background: var(--red); }
-.badge.rec.on .dot { background: var(--red); }
-.badge.fwd.off .dot { background: var(--amber); }
+.switch:hover { background: #262b36; }
+.switch .track {
+  position: relative; width: 28px; height: 16px; border-radius: 999px;
+  background: #3a4050; transition: background .15s;
+}
+.switch .knob {
+  position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.4); transition: left .15s;
+}
+.switch.on .track { background: var(--green); }
+.switch.on .knob { left: 14px; }
+.switch.on .switch-label { color: var(--text); }
+.switch.off .track { background: var(--red); }
+.switch.rec.on .track { background: var(--red); }
+.switch.rec.off .track { background: #3a4050; }
+.switch.fwd.off .track { background: var(--amber); }
 
 main { flex: 1 1 auto; display: flex; min-height: 0; }
 
