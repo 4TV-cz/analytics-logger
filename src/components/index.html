@@ -81,6 +81,7 @@
       <div id="empty">No events yet. Waiting for requests…</div>
     </div>
     <div id="detail">
+      <div id="detail-resizer" title="Drag to resize"></div>
       <div id="detail-head">
         <span class="title" id="detail-title"></span>
         <button id="detail-raw" title="View the raw logged request JSON">raw request</button>
@@ -111,6 +112,18 @@
       <div id="tl-axis"></div>
     </div>
     <div id="tl-tooltip"></div>
+  </section>
+
+  <section id="console">
+    <div id="console-resizer" title="Drag to resize"></div>
+    <div id="console-head">
+      <button id="console-toggle" class="console-chevron" title="Collapse / expand the console">▾</button>
+      <span class="tl-title">CONSOLE</span>
+      <span class="tl-info" id="console-info">0 lines</span>
+      <label style="margin-left:auto"><input type="checkbox" id="console-autoscroll" checked /> autoscroll</label>
+      <button id="console-clear" title="Clear the console (does not delete logs)">Clear</button>
+    </div>
+    <div id="console-lines"></div>
   </section>
 
   <div id="toast" role="status" aria-live="polite"></div>

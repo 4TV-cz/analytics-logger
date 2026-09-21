@@ -129,8 +129,13 @@ class GuiServer {
         columns: providerColumns(),
         total: rows.length,
         rows: slice,
+        console: this.proxy.consoleSince(Number(url.searchParams.get('cseq')) || 0),
         state: this._currentState(),
       });
+    }
+    if (req.method === 'POST' && p === '/api/console/clear') {
+      this.proxy.clearConsole();
+      return this._sendJson(res, 200, this._currentState());
     }
     if (req.method === 'GET' && p === '/api/state') {
       return this._sendJson(res, 200, this._currentState());

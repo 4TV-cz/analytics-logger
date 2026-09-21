@@ -3,6 +3,8 @@ const path = require('path');
 const { parseUpstreamFromUrl, buildUpstreamHeaders, buildClientHeaders, callUpstream } = require('./proxy');
 const { parseIfJson } = require('./body-utils');
 
+const CONSOLE_MAX_LINES = 2000;
+
 // Transparent proxy for analytics endpoints (Mux, Google Analytics, mParticle
 // or anything else). The device points its reporting traffic here, reaching us
 // as e.g. http://<proxy>/;https://<env>.litix.io. We forward every request
@@ -17,11 +19,34 @@ class ProxyServer {
     this.isRecording = true;
     this.isForwarding = true;
     this.clearViewAt = null;
+    // In-memory console: one line per incoming request, mirrored to stdout
+    // and served to the GUI console panel. Bounded ring buffer.
+    this.consoleLines = [];
+    this.consoleSeq = 0;
     this.server = http.createServer((req, res) => this._handle(req, res));
     this.server.on('clientError', (err, socket) => {
       console.error('[proxy] client error:', err.message);
       if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
     });
+  }
+
+  // Record one console line for a request and echo it to stdout.
+  _logRequest({ timestamp, method, url, status, note }) {
+    const line = { seq: ++this.consoleSeq, ts: timestamp, method, url, status: String(status), note: note || '' };
+    this.consoleLines.push(line);
+    if (this.consoleLines.length > CONSOLE_MAX_LINES) this.consoleLines.splice(0, this.consoleLines.length - CONSOLE_MAX_LINES);
+    console.log(`[${timestamp}] ${method} ${url} -> ${status}${note ? ' ' + note : ''}`);
+  }
+
+  // Console lines newer than `seq` (0 = everything still buffered).
+  consoleSince(seq) {
+    if (!seq) return this.consoleLines.slice();
+    const idx = this.consoleLines.findIndex((l) => l.seq > seq);
+    return idx === -1 ? [] : this.consoleLines.slice(idx);
+  }
+
+  clearConsole() {
+    this.consoleLines = [];
   }
 
   _handle(req, res) {
@@ -59,7 +84,7 @@ class ProxyServer {
         } catch (err) {
           console.error('[proxy] clear error:', err.message);
         }
-        console.log(`[${this.clearViewAt}] ${req.method} ${req.url} -> CLEAR_VIEW (${deleted} files deleted)`);
+        this._logRequest({ timestamp: this.clearViewAt, method: req.method, url: req.url, status: 'CLEAR_VIEW', note: `(${deleted} files deleted)` });
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end('ok');
         return;
@@ -107,10 +132,16 @@ class ProxyServer {
           }
         }
         const recTag = written
-          ? ` (${written.provider}: ${written.count} events -> ${path.basename(written.file)})`
-          : (this.isRecording ? '' : ' [paused]');
-        const fwdTag = responsePart.forwarded === false ? ' [not forwarded]' : '';
-        console.log(`[${requestPart.timestamp}] ${requestPart.method} ${target ? target.url : requestPart.url} -> ${responsePart.statusCode ?? responsePart.error ?? 'NO_UPSTREAM'}${fwdTag}${recTag}`);
+          ? `(${written.provider}: ${written.count} events -> ${path.basename(written.file)})`
+          : (this.isRecording ? '' : '[paused]');
+        const fwdTag = responsePart.forwarded === false ? '[not forwarded]' : '';
+        this._logRequest({
+          timestamp: requestPart.timestamp,
+          method: requestPart.method,
+          url: target ? target.url : requestPart.url,
+          status: responsePart.statusCode ?? responsePart.error ?? 'NO_UPSTREAM',
+          note: [fwdTag, recTag].filter(Boolean).join(' '),
+        });
         res.writeHead(clientStatus, clientHeaders);
         res.end(clientBody);
       };

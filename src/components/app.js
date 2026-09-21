@@ -354,6 +354,42 @@ async function showRawRequest(file) {
   } catch { /* ignore */ }
 }
 
+// Drag the panel's left edge to change its width (persisted).
+const DETAIL_MIN_W = 280;
+function initDetailResizer() {
+  const panel = $('detail');
+  const saved = Number(localStorage.getItem('logger.detailWidth'));
+  if (Number.isFinite(saved) && saved >= DETAIL_MIN_W) panel.style.setProperty('--detail-w', saved + 'px');
+
+  $('detail-resizer').addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const startW = panel.getBoundingClientRect().width;
+    const maxW = Math.max(DETAIL_MIN_W, $('grid').parentElement.clientWidth - 200);
+    panel.classList.add('resizing');
+    document.body.classList.add('resizing-detail');
+    let w = startW;
+    const onMove = (ev) => {
+      w = Math.min(maxW, Math.max(DETAIL_MIN_W, startW + (startX - ev.clientX)));
+      panel.style.setProperty('--detail-w', w + 'px');
+    };
+    const onUp = () => {
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+      panel.classList.remove('resizing');
+      document.body.classList.remove('resizing-detail');
+      localStorage.setItem('logger.detailWidth', String(Math.round(w)));
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
+  });
+}
+
 function closeDetail() {
   $('detail').classList.remove('open');
   selectedId = null;
@@ -613,9 +649,120 @@ function applyState(state) {
   if (state.clearViewAt && state.clearViewAt !== lastClearViewAt) {
     lastClearViewAt = state.clearViewAt;
     hiddenBefore = rows.length ? rows[rows.length - 1].id : null;
-    if (stateInitialized) showToast('Session cleared', 'Logs deleted by a /session/clear request');
+    if (stateInitialized) {
+      closeDetail();
+      showToast('Session cleared', 'Logs deleted by a /session/clear request');
+    }
   }
   stateInitialized = true;
+}
+
+// ---- console (one line per incoming request) ----
+let consoleSeq = 0;             // seq of the newest console line we have
+const CONSOLE_MAX_DOM = 2000;   // lines kept in the DOM
+
+function statusClass(st) {
+  if (/^2\d\d$/.test(st)) return 'ok';
+  if (/^[45]\d\d$/.test(st)) return 'err';
+  if (/^3\d\d$|CLEAR_VIEW/.test(st)) return 'warn';
+  return 'err'; // upstream error text / NO_UPSTREAM
+}
+
+function fmtConsoleTs(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const p = (n, w = 2) => String(n).padStart(w, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
+}
+
+function buildConsoleLine(l) {
+  const row = el('div', 'cl');
+  row.title = `[${l.ts}] ${l.method} ${l.url} -> ${l.status}${l.note ? ' ' + l.note : ''}`;
+  row.appendChild(el('span', 'cl-ts', fmtConsoleTs(l.ts)));
+  row.appendChild(el('span', 'cl-m', l.method));
+  row.appendChild(el('span', 'cl-url', l.url));
+  row.appendChild(el('span', 'cl-st ' + statusClass(l.status), '→ ' + l.status));
+  if (l.note) row.appendChild(el('span', 'cl-note', l.note));
+  return row;
+}
+
+function appendConsole(lines) {
+  if (!lines || !lines.length) return;
+  const box = $('console-lines');
+  const empty = $('console-empty');
+  if (empty) empty.remove();
+  const frag = document.createDocumentFragment();
+  for (const l of lines) {
+    if (l.seq <= consoleSeq) continue;
+    consoleSeq = l.seq;
+    frag.appendChild(buildConsoleLine(l));
+  }
+  box.appendChild(frag);
+  while (box.childElementCount > CONSOLE_MAX_DOM) box.removeChild(box.firstElementChild);
+  $('console-info').textContent = `${box.childElementCount} lines`;
+  if ($('console-autoscroll').checked) box.scrollTop = box.scrollHeight;
+}
+
+function resetConsole() {
+  const box = $('console-lines');
+  box.replaceChildren(el('div', null, 'No requests yet.'));
+  box.firstElementChild.id = 'console-empty';
+  $('console-info').textContent = '0 lines';
+}
+
+// Drag the console's top edge to change its height (persisted).
+const CONSOLE_MIN_H = 60;
+function initConsoleResizer() {
+  const panel = $('console');
+  const saved = Number(localStorage.getItem('logger.consoleHeight'));
+  if (Number.isFinite(saved) && saved >= CONSOLE_MIN_H) panel.style.setProperty('--console-h', saved + 'px');
+
+  $('console-resizer').addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const box = $('console-lines');
+    const startY = e.clientY;
+    const startH = box.getBoundingClientRect().height;
+    const maxH = Math.max(CONSOLE_MIN_H, window.innerHeight - 250);
+    const stickToBottom = $('console-autoscroll').checked;
+    panel.classList.add('resizing');
+    document.body.classList.add('resizing-console');
+    let h = startH;
+    const onMove = (ev) => {
+      h = Math.min(maxH, Math.max(CONSOLE_MIN_H, startH + (startY - ev.clientY)));
+      panel.style.setProperty('--console-h', h + 'px');
+      if (stickToBottom) box.scrollTop = box.scrollHeight;
+    };
+    const onUp = () => {
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+      panel.classList.remove('resizing');
+      document.body.classList.remove('resizing-console');
+      localStorage.setItem('logger.consoleHeight', String(Math.round(h)));
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
+  });
+}
+
+function initConsole() {
+  initConsoleResizer();
+  const panel = $('console');
+  const setCollapsed = (on) => {
+    panel.classList.toggle('collapsed', on);
+    localStorage.setItem('logger.consoleCollapsed', on ? '1' : '0');
+  };
+  setCollapsed(localStorage.getItem('logger.consoleCollapsed') === '1');
+  $('console-toggle').addEventListener('click', () => setCollapsed(!panel.classList.contains('collapsed')));
+  $('console-clear').addEventListener('click', async () => {
+    await fetch('/api/console/clear', { method: 'POST' });
+    resetConsole();
+  });
+  resetConsole();
 }
 
 // ---- ingest / poll ----
@@ -641,8 +788,9 @@ function ingest(newRows, replace) {
 
 async function poll() {
   try {
-    const url = lastId ? '/api/events?since=' + encodeURIComponent(lastId) : '/api/events';
+    const url = '/api/events?cseq=' + consoleSeq + (lastId ? '&since=' + encodeURIComponent(lastId) : '');
     const data = await fetch(url).then((r) => r.json());
+    appendConsole(data.console);
     if (!providers.length && data.providers) {
       providers = data.providers;
       columnsByProvider = data.columns || {};
@@ -773,6 +921,7 @@ function init() {
   });
 
   $('detail-close').addEventListener('click', closeDetail);
+  initDetailResizer();
   $('detail-raw').addEventListener('click', (e) => showRawRequest(e.currentTarget.dataset.file));
 
   $('config-btn').addEventListener('click', openConfig);
@@ -787,6 +936,7 @@ function init() {
   });
 
   initTimelineTooltip();
+  initConsole();
   poll();
   setInterval(poll, 1000);
 }
