@@ -11,7 +11,7 @@
 //      app run from source (electron out of this repo's node_modules), and the
 //      packaged app (Analytics Logger.app / AnalyticsLogger-*.exe)
 //   2. by port — as a fallback, anything of ours still listening on the proxy
-//      port (from config/config.json, else PORT / 8889) or the GUI port
+//      port (from config/config.json, else PORT / 8888) or the GUI port
 //      (GUI_PORT / 8080)
 //
 // Only processes that belong to this checkout (working directory or command
@@ -145,7 +145,7 @@ function findOurs() {
 // the env var / built-in default as the fallback — the same resolution the
 // server itself does.
 function configuredPorts() {
-  let proxy = Number(process.env.PORT) || 8889;
+  let proxy = Number(process.env.PORT) || 8888;
   try {
     const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'config.json'), 'utf8'));
     if (Number.isInteger(cfg.port)) proxy = cfg.port;
@@ -159,7 +159,7 @@ function pidsOnPort(port) {
   const pids = new Set();
   if (isWindows) {
     // netstat rows look like:
-    //   TCP    0.0.0.0:8889   0.0.0.0:0   LISTENING   12345
+    //   TCP    0.0.0.0:8888   0.0.0.0:0   LISTENING   12345
     const out = sh('netstat -ano -p tcp');
     for (const line of out.split(/\r?\n/)) {
       if (!/LISTENING/i.test(line)) continue;

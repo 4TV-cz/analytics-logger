@@ -227,7 +227,6 @@ body { margin: 0; font: var(--font-ui); background: var(--bg); color: var(--text
    corner rather than flowing with the toolbar. The extra right padding is the
    space it occupies, so no toolbar content can end up underneath it. */
 header { position: relative; padding: 8px 52px 8px 12px; background: var(--bg-panel); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; align-items: stretch; gap: 6px; flex-shrink: 0; }
-header h1 { font-size: 15px; margin: 0 6px 0 0; font-weight: 600; letter-spacing: .3px; }
 header button { background: var(--bg-btn); color: var(--text); border: 1px solid var(--border-strong); padding: 4px 10px; cursor: pointer; border-radius: 3px; font: inherit; font-size: 12px; }
 header button:hover { background: var(--bg-btn-hover); }
 header button.danger { border-color: var(--danger-border); color: var(--danger); }

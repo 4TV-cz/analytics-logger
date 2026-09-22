@@ -5,7 +5,7 @@ class Config {
   constructor(file) {
     this.file = file;
     this.defaults = {
-      port: Number(process.env.PORT) || 8889,
+      port: Number(process.env.PORT) || 8888,
       host: process.env.HOST || '0.0.0.0',
       upstreamTimeoutMs: Number(process.env.UPSTREAM_TIMEOUT_MS) || 30000,
       maxBodyBytes: Number(process.env.MAX_BODY_BYTES) || 10 * 1024 * 1024,

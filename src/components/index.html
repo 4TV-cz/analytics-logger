@@ -16,7 +16,6 @@
 <body>
   <header>
     <div class="toolbar">
-      <h1>Analytics Logger</h1>
       <button class="switch" id="toggle-proxy" role="switch" aria-checked="true" title="Start / stop the proxy listener"><span class="track"><span class="knob"></span></span><span class="switch-label">…</span></button>
       <button class="switch rec" id="toggle-rec" role="switch" aria-checked="true" title="Pause / resume writing requests to disk (traffic is still forwarded while paused)"><span class="track"><span class="knob"></span></span><span class="switch-label">…</span></button>
       <button class="switch fwd" id="toggle-fwd" role="switch" aria-checked="true" title="Forwarding on: requests are relayed to the upstream in the request path. Off: requests are logged but stop here (200 OK) and never reach the upstream."><span class="track"><span class="knob"></span></span><span class="switch-label">…</span></button>
@@ -98,7 +97,7 @@
             <div class="field">
               <label for="cfg-routes">Path routes</label>
               <textarea id="cfg-routes" rows="3" spellcheck="false" placeholder="/mparticle https://nativesdks.mparticle.com"></textarea>
-              <div class="help">For SDKs that only take a base URL (e.g. the mParticle Roku SDK): one <code>/prefix https://upstream-host</code> per line. A request to <code>http://&lt;proxy&gt;:8889/mparticle/v2/…</code> is forwarded to <code>https://nativesdks.mparticle.com/v2/…</code>.</div>
+              <div class="help">For SDKs that only take a base URL (e.g. the mParticle Roku SDK): one <code>/prefix https://upstream-host</code> per line. A request to <code>http://&lt;proxy&gt;:8888/mparticle/v2/…</code> is forwarded to <code>https://nativesdks.mparticle.com/v2/…</code>.</div>
             </div>
           </section>
           <section data-panel="response" role="tabpanel">

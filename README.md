@@ -12,7 +12,7 @@ One grid: a row per **HTTP request** (any traffic — Charles-style domain tree,
 ![Analytics Logger](assets/app_screenshot.png)
 
 ```
-client / device ──► Analytics Logger proxy (0.0.0.0:8889) ──► upstream (litix.io, an API, a CDN …)
+client / device ──► Analytics Logger proxy (0.0.0.0:8888) ──► upstream (litix.io, an API, a CDN …)
 (Roku, web, TV)          │
                          ├── logs/   (one JSON file per request)
                          └── GUI     (http://localhost:8080)
@@ -25,14 +25,14 @@ The runtime code has zero dependencies (Node.js built-ins only); Electron and el
 The proxy is **not** a `CONNECT`-style system proxy. The upstream URL is embedded in the request path, after a configurable **Client URL prefix** (default `/;`):
 
 ```
-http://<your-LAN-IP>:8889/;https://tvos-prod.litix.io/…
+http://<your-LAN-IP>:8888/;https://tvos-prod.litix.io/…
                          └┬┘└──────────┬─────────────┘
                        prefix      upstream URL
 ```
 
 Only the *path* portion of the prefix is matched, so it doesn't matter which local IP or hostname the client used to reach the proxy. Set the prefix to an empty string to treat the entire request URL as the upstream (classic absolute-form proxy requests).
 
-Some SDKs can only be given a **base URL** and append their own path (the mParticle Roku SDK posts to `<base>/v2/<key>/events`). For those, use a **path route** instead of the prefix: ⚙ Settings → URL handling has a *Path routes* list (defaults: `/mparticle → https://nativesdks.mparticle.com`, `/ga → https://www.google-analytics.com`), so pointing the SDK at `http://<your-LAN-IP>:8889/mparticle` forwards to `https://nativesdks.mparticle.com/v2/<key>/events`.
+Some SDKs can only be given a **base URL** and append their own path (the mParticle Roku SDK posts to `<base>/v2/<key>/events`). For those, use a **path route** instead of the prefix: ⚙ Settings → URL handling has a *Path routes* list (defaults: `/mparticle → https://nativesdks.mparticle.com`, `/ga → https://www.google-analytics.com`), so pointing the SDK at `http://<your-LAN-IP>:8888/mparticle` forwards to `https://nativesdks.mparticle.com/v2/<key>/events`.
 
 Requests that don't yield an upstream get `502 Bad Gateway` — and are still logged.
 
@@ -40,19 +40,19 @@ Requests that don't yield an upstream get `502 Bad Gateway` — and are still lo
 
 The device does not discover the proxy by itself — you must **update the endpoint URL in the player/app configuration**:
 
-1. Start Analytics Logger and note the proxy address: `<your-LAN-IP>` (the machine running this tool — it must be reachable from the device, same network) and the proxy port (`8889` by default, shown in the toolbar switch and the ⚙ dialog).
+1. Start Analytics Logger and note the proxy address: `<your-LAN-IP>` (the machine running this tool — it must be reachable from the device, same network) and the proxy port (`8888` by default, shown in the toolbar switch and the ⚙ dialog).
 2. Take the original endpoint the player uses today, e.g. `https://tvos-prod.litix.io`.
 3. Join the three parts — proxy address, the prefix, the original URL:
 
    ```
    before:  https://tvos-prod.litix.io
-   after:   http://192.168.1.50:8889/;https://tvos-prod.litix.io
+   after:   http://192.168.1.50:8888/;https://tvos-prod.litix.io
    ```
 
 4. Set that as the beacon endpoint on the device and restart playback; rows appear as soon as the player reports.
 
-- **Roku Mux SDK** — set the beacon/base URL to `http://<your-LAN-IP>:8889/;https://<env>.litix.io`.
-- **Web (`mux-embed`, player SDKs)** — set `beaconCollectionDomain` / beacon domain so requests hit `http://<your-LAN-IP>:8889/;https://<env>.litix.io` (or use devtools/Charles rewrite rules).
+- **Roku Mux SDK** — set the beacon/base URL to `http://<your-LAN-IP>:8888/;https://<env>.litix.io`.
+- **Web (`mux-embed`, player SDKs)** — set `beaconCollectionDomain` / beacon domain so requests hit `http://<your-LAN-IP>:8888/;https://<env>.litix.io` (or use devtools/Charles rewrite rules).
 - **Anything else** — any HTTP client that can be pointed at a custom endpoint, directly or via a rewrite rule. The same scheme works for an API or an HLS origin, not just analytics.
 
 If your SDK composes the URL differently, adjust the **Client URL prefix**: `/;` when the client inserts a `;` separator (Roku default), `/` for clients that send `http://<proxy>/https://...`, or empty for clients using the tool as a plain HTTP proxy with absolute-form URLs.
@@ -61,9 +61,9 @@ If your SDK composes the URL differently, adjust the **Client URL prefix**: `/;`
 
 A request aimed at the proxy itself whose path contains `clearViewPattern` (default `/session/clear`) is answered `200 ok` — not forwarded, not logged — and clears the capture: exactly what the toolbar's **Clear** does. Every log file is deleted from disk and open browsers empty their views. The delete finishes **before** the `200` is sent, so a client that fires its next request the moment it gets the response cannot have that traffic swept up by the clear it just asked for.
 
-Only requests that are *not* being forwarded count: `http://proxy:8889/session/clear` triggers it, while `http://proxy:8889/;http://api.example.com/x?next=/session/clear` (or a path under a route) is proxied normally. The exact URL for your network is shown under ⚙ Settings → Commands.
+Only requests that are *not* being forwarded count: `http://proxy:8888/session/clear` triggers it, while `http://proxy:8888/;http://api.example.com/x?next=/session/clear` (or a path under a route) is proxied normally. The exact URL for your network is shown under ⚙ Settings → Commands.
 
-> **Tip:** hook it into your build/deploy script to start every build with a clean session, e.g. `curl -s http://192.168.1.50:8889/session/clear` as the last step before sideloading.
+> **Tip:** hook it into your build/deploy script to start every build with a clean session, e.g. `curl -s http://192.168.1.50:8888/session/clear` as the last step before sideloading.
 
 ### Response URL rewriting (off by default)
 
@@ -86,7 +86,7 @@ Two servers come up either way:
 
 | Server | Default | Purpose |
 | ------ | ------- | ------- |
-| Proxy  | `0.0.0.0:8889` | receives client traffic, forwards it, logs it |
+| Proxy  | `0.0.0.0:8888` | receives client traffic, forwards it, logs it |
 | GUI    | `127.0.0.1:8080` | web UI + JSON API — open <http://localhost:8080> |
 
 The proxy binds all interfaces so devices on the network can reach it (which is what makes Windows Firewall prompt on first run). The **GUI is loopback-only** by default, because its API serves captured traffic verbatim — `Authorization` headers, cookies and signed URLs included — with no authentication. Set `GUI_HOST=0.0.0.0` to expose it deliberately (e.g. to open it from another machine). Requests that change something (`POST`, `DELETE`) must carry an `X-Proxy-UI: 1` header; the GUI sends it, a cross-site form post cannot, so another page in your browser cannot wipe or reconfigure the capture.
@@ -166,7 +166,7 @@ Settings live in `config/config.json` (git-ignored, created on first save). Miss
 
 | Key | Env var | Default | Meaning |
 | --- | ------- | ------- | ------- |
-| `port` | `PORT` | `8889` | proxy listen port |
+| `port` | `PORT` | `8888` | proxy listen port |
 | `host` | `HOST` | `0.0.0.0` | proxy bind address |
 | `upstreamTimeoutMs` | `UPSTREAM_TIMEOUT_MS` | `30000` | upstream request timeout |
 | `maxBodyBytes` | `MAX_BODY_BYTES` | `10485760` | request body cap — larger bodies are truncated (and flagged `bodyTruncated`) before forwarding |
@@ -220,7 +220,7 @@ Writes are **queued, not synchronous** — the proxy hands the entry to a backgr
     "remoteAddress": "::1", "remotePort": 51234,
     "method": "POST",
     "url": "https://tvos-prod.litix.io/",              // upstream URL
-    "originalUrl": "http://192.168.1.50:8889/;https://tvos-prod.litix.io/",
+    "originalUrl": "http://192.168.1.50:8888/;https://tvos-prod.litix.io/",
     "httpVersion": "1.1",
     "headers": { }, "rawHeaders": [ ],
     "bodyBytes": 812, "bodyTruncated": false,
