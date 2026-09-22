@@ -37,6 +37,14 @@ function toNumber(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+// A request body is stored parsed when it was JSON and as a string otherwise
+// (binary lands in `bodyBase64`, which no provider reads). Line-based formats
+// (GA hits) need the text form.
+function bodyTextOf(entry) {
+  const body = entry.request?.body;
+  return typeof body === 'string' ? body : null;
+}
+
 // ---------------------------------------------------------------- Mux ------
 // Beacon body: { events: [ {minified keys} ] }, see mux.js for decoding.
 const mux = {
@@ -124,9 +132,8 @@ const ga = {
 
     // gtag / UA: shared params in the query, optionally one extra hit per body line.
     const shared = gaDecodeParams(query, {});
-    const lines = typeof req.bodyText === 'string'
-      ? req.bodyText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
-      : [];
+    const text = bodyTextOf(entry);
+    const lines = text ? text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean) : [];
     const hits = lines.length ? lines.map((l) => gaDecodeParams(new URLSearchParams(l), { ...shared })) : [shared];
     return hits.map((props) => ({
       event: props.event_name || props.event_action || props.hit_type || '',
@@ -230,7 +237,7 @@ const other = {
     const qIdx = path.indexOf('?');
     if (qIdx !== -1) for (const [k, v] of new URLSearchParams(path.slice(qIdx + 1))) props[`query.${k}`] = v;
     if (req.body && typeof req.body === 'object') Object.assign(props, flatten(req.body, 'body'));
-    else if (typeof req.bodyText === 'string' && req.bodyText) props.body_text = req.bodyText.slice(0, 2000);
+    else if (bodyTextOf(entry)) props.body_text = bodyTextOf(entry).slice(0, 2000);
     return [{ event: `${req.method || ''} ${props.path}`.trim(), props }];
   },
 };
@@ -252,4 +259,4 @@ function providerColumns() {
   return out;
 }
 
-module.exports = { PROVIDERS, detectProvider, providerInfo, providerColumns };
+module.exports = { detectProvider, providerInfo, providerColumns };

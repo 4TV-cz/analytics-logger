@@ -3,26 +3,41 @@
 <head>
   <meta charset="utf-8" />
   <title>Analytics Logger</title>
+  <script>
+    // Applied before the stylesheet paints, so a light-theme user does not get
+    // a dark flash on every load. app.js owns the value; this only reads it.
+    try {
+      var saved = JSON.parse(localStorage.getItem('analyticsLogger.uiState') || '{}');
+      if (saved && saved.theme === 'light') document.documentElement.dataset.theme = 'light';
+    } catch (e) {}
+  </script>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <header>
     <div class="toolbar">
       <h1>Analytics Logger</h1>
-      <button class="switch" id="toggle-proxy" role="switch" aria-checked="true" title="Start / stop the proxy listener"><span class="track"><span class="knob"></span></span><span class="switch-label" id="proxy-label">…</span></button>
-      <button class="switch rec" id="toggle-rec" role="switch" aria-checked="true" title="Pause / resume writing requests to disk"><span class="track"><span class="knob"></span></span><span class="switch-label" id="rec-label">…</span></button>
-      <button class="switch fwd" id="toggle-fwd" role="switch" aria-checked="true" title="Forwarding on: beacons are relayed to the Mux URL in the request path. Off: beacons are logged but stop here (200 OK) and never reach Mux."><span class="track"><span class="knob"></span></span><span class="switch-label" id="fwd-label">…</span></button>
-      <button id="clear-disk" class="danger">Delete logs</button>
-      <select id="provider-filter" title="Analytics provider: filters the rows and picks the column layout"><option value="">All providers</option></select>
-      <input type="text" id="filter" placeholder="filter events (any field)" style="margin-left:auto" />
-      <select id="event-filter"><option value="">All events</option></select>
-      <label title="Collapse the events of each request under a header"><input type="checkbox" id="group-requests" /> group by request</label>
-      <button id="collapse-all" style="display:none" title="Collapse / expand all requests">Collapse all</button>
+      <button class="switch" id="toggle-proxy" role="switch" aria-checked="true" title="Start / stop the proxy listener"><span class="track"><span class="knob"></span></span><span class="switch-label">…</span></button>
+      <button class="switch rec" id="toggle-rec" role="switch" aria-checked="true" title="Pause / resume writing requests to disk (traffic is still forwarded while paused)"><span class="track"><span class="knob"></span></span><span class="switch-label">…</span></button>
+      <button class="switch fwd" id="toggle-fwd" role="switch" aria-checked="true" title="Forwarding on: requests are relayed to the upstream in the request path. Off: requests are logged but stop here (200 OK) and never reach the upstream."><span class="track"><span class="knob"></span></span><span class="switch-label">…</span></button>
+      <button id="clear" class="danger" title="Delete all logs from disk and empty the view">Clear</button>
+      <div class="dropdown" title="Tick the providers to show; unticked ones are hidden from the table">
+        <button type="button" id="provider-btn">All providers ▾</button>
+        <div class="dropdown-menu" id="provider-menu"></div>
+      </div>
+      <input type="text" id="filter" placeholder="filter (-term excludes, /regex/)" style="margin-left:auto" />
       <label><input type="checkbox" id="autoscroll" checked /> autoscroll</label>
-      <label class="stepper" title="Render only the most recent N events (0 = show all). All requests stay on disk.">
-        show last <input type="number" id="event-cap" min="0" step="100" value="500" /> events
-      </label>
+      <label title="Tree view: host, then one level per URL path segment"><input type="checkbox" id="group-by-domain" /> group by domain</label>
+      <button id="expand-collapse-all" style="display:none" title="Expand all groups">▶ all</button>
       <button id="config-btn" title="Settings">⚙</button>
+    </div>
+    <div class="toolbar search-row">
+      <input type="text" id="deep-search" placeholder="deep search all log files (Enter)" />
+      <button id="deep-search-clear" style="display:none" title="Clear deep search">×</button>
+      <button id="search-prev-hit" title="Previous match (Shift+F3 / N)">▲</button>
+      <span class="hits" id="search-hits" style="display:none" title="Search matches in the open request"></span>
+      <button id="search-next-hit" title="Next match (F3 / n)">▼</button>
+      <span class="badge" id="deep-search-badge" style="display:none"></span>
     </div>
   </header>
 
@@ -36,30 +51,90 @@
       </div>
     </div>
   </div>
-
+  <div class="modal-backdrop" id="columns-modal">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2>Columns</h2>
+      <div class="col-list" id="col-list"></div>
+      <div class="err" id="cols-error"></div>
+      <div class="actions">
+        <button id="cols-show-all">Show all</button>
+        <button id="cols-close" class="primary">Done</button>
+      </div>
+    </div>
+  </div>
   <div class="modal-backdrop" id="config-modal">
     <div class="modal config-modal" role="dialog" aria-modal="true">
-      <h2>Configuration</h2>
+      <h2>Settings</h2>
       <div class="config-body">
-        <div class="field">
-          <label for="cfg-port">Proxy port</label>
-          <input type="number" id="cfg-port" min="1" max="65535" />
-          <div class="help">Port the device sends analytics requests to. Proxy restarts on save.</div>
-        </div>
-        <div class="field">
-          <label for="cfg-url-prefix">Client URL prefix</label>
-          <input type="text" id="cfg-url-prefix" placeholder="e.g. /;" />
-          <div class="help">Separator between the proxy address and the upstream URL in the request path (e.g. <code>/;https://&lt;env&gt;.litix.io</code>, <code>/;https://www.google-analytics.com</code>, <code>/;https://nativesdks.mparticle.com</code>).</div>
-        </div>
-        <div class="field">
-          <label for="cfg-routes">Path routes</label>
-          <textarea id="cfg-routes" rows="3" spellcheck="false" placeholder="/mparticle https://nativesdks.mparticle.com"></textarea>
-          <div class="help">For SDKs that only take a base URL (e.g. the mParticle Roku SDK): one <code>/prefix https://upstream-host</code> per line. A request to <code>http://&lt;proxy&gt;:8889/mparticle/v2/…</code> is forwarded to <code>https://nativesdks.mparticle.com/v2/…</code>.</div>
-        </div>
-        <div class="field">
-          <label for="cfg-clear-view-url">Clear session URL</label>
-          <input type="text" id="cfg-clear-view-url" readonly />
-          <div class="help">Call this URL from the device (or any browser) to delete all stored logs and reset the grid — the proxy answers 200 without forwarding. Read-only; derived from the proxy host:port and the clear pattern.</div>
+        <nav class="config-tabs" id="config-tabs" role="tablist">
+          <button type="button" data-tab="general" class="active" role="tab">General</button>
+          <button type="button" data-tab="routing" role="tab">URL handling</button>
+          <button type="button" data-tab="response" role="tab">Response</button>
+          <button type="button" data-tab="storage" role="tab">Storage</button>
+          <button type="button" data-tab="commands" role="tab">Commands</button>
+        </nav>
+        <div class="config-panels">
+          <section data-panel="general" class="active" role="tabpanel">
+            <div class="field">
+              <label for="cfg-theme">Theme</label>
+              <select id="cfg-theme">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+              </select>
+              <div class="help">Applies straight away so you can see it; Cancel puts it back. Stored per browser, not in the proxy config.</div>
+            </div>
+            <div class="field">
+              <label for="cfg-port">Proxy port</label>
+              <input type="number" id="cfg-port" min="1" max="65535" />
+              <div class="help">Port the device sends requests to. Ports below 1024 require Administrator on Windows. The proxy restarts on save.</div>
+            </div>
+          </section>
+          <section data-panel="routing" role="tabpanel">
+            <div class="field">
+              <label for="cfg-url-prefix">Client URL prefix</label>
+              <input type="text" id="cfg-url-prefix" placeholder="e.g. /;" />
+              <div class="help">Separator between the proxy address and the upstream URL in the request path (e.g. <code>/;https://&lt;env&gt;.litix.io</code>, <code>/;https://www.google-analytics.com</code>). Only the path portion is matched, so the proxy's host:port doesn't matter. Leave empty to treat the whole request URL as the upstream.</div>
+            </div>
+            <div class="field">
+              <label for="cfg-routes">Path routes</label>
+              <textarea id="cfg-routes" rows="3" spellcheck="false" placeholder="/mparticle https://nativesdks.mparticle.com"></textarea>
+              <div class="help">For SDKs that only take a base URL (e.g. the mParticle Roku SDK): one <code>/prefix https://upstream-host</code> per line. A request to <code>http://&lt;proxy&gt;:8889/mparticle/v2/…</code> is forwarded to <code>https://nativesdks.mparticle.com/v2/…</code>.</div>
+            </div>
+          </section>
+          <section data-panel="response" role="tabpanel">
+            <div class="field">
+              <label><input type="checkbox" id="cfg-rewrite-response-urls" /> Rewrite URLs in JSON responses</label>
+              <div class="help">When enabled, absolute http/https URLs found in JSON response bodies are prefixed with this proxy's address + Client URL prefix so the client routes them back through the proxy. Off by default — analytics responses go back untouched. Requires Client URL prefix to be set.</div>
+            </div>
+            <div class="field">
+              <label><input type="checkbox" id="cfg-rewrite-m3u8-urls" /> Rewrite relative URLs in m3u8 responses</label>
+              <div class="help">HLS playlists mostly reference their variants and segments relatively ("../../chunklist-d.m3u8"), which a player cannot resolve once it fetched the playlist from the proxy. When enabled, every reference in an m3u8 — bare lines and URI="…" tag attributes alike — is resolved against the playlist's own URL and routed back through the proxy. Requires Client URL prefix to be set.</div>
+            </div>
+          </section>
+          <section data-panel="storage" role="tabpanel">
+            <div class="field">
+              <label for="cfg-max-log-files">Keep at most N requests</label>
+              <input type="number" id="cfg-max-log-files" min="0" step="1" placeholder="0 = unlimited" />
+              <div class="help">Once exceeded, the oldest entries are deleted from disk. 0 disables the cap.</div>
+            </div>
+            <div class="field">
+              <label for="cfg-max-log-mb">Keep at most N MB</label>
+              <input type="number" id="cfg-max-log-mb" min="0" step="1" placeholder="0 = unlimited" />
+              <div class="help">Same, by total size of the logs folder. Whichever limit is reached first starts evicting. 0 disables the cap.</div>
+            </div>
+          </section>
+          <section data-panel="commands" role="tabpanel">
+            <div class="field">
+              <label for="cfg-clear-view-pattern">Clear session on</label>
+              <input type="text" id="cfg-clear-view-pattern" placeholder="e.g. /session/clear" />
+              <div class="help">When a request aimed at the proxy itself contains this substring, the proxy responds 200 OK without forwarding and clears the capture — the same as the Clear button: every log file is deleted from disk and the view is emptied. The delete finishes before the 200 comes back, so requests sent after it are safe. Leave empty to disable.</div>
+            </div>
+            <div class="field">
+              <label for="cfg-clear-view-url">Clear session URL</label>
+              <input type="text" id="cfg-clear-view-url" readonly />
+              <div class="help">Call this URL from the device (or any browser, or your deploy script) to start a session from scratch. Read-only; derived from the proxy's LAN address, port and the pattern above.</div>
+            </div>
+          </section>
         </div>
       </div>
       <div class="err" id="cfg-error"></div>
@@ -73,29 +148,62 @@
   <main>
     <div id="grid">
       <table>
+        <colgroup id="head-cols"></colgroup>
         <thead>
           <tr id="head-row"></tr>
         </thead>
         <tbody id="rows"></tbody>
       </table>
-      <div id="empty">No events yet. Waiting for requests…</div>
+      <div id="empty">No requests yet. Waiting...</div>
+    </div>
+    <div id="detail-resize" title="Drag to resize (double-click to reset)"></div>
+    <div id="detail-context-menu" class="context-menu" role="menu">
+      <div class="context-menu-item" id="dcm-copy-name" role="menuitem">Copy name</div>
+      <div class="context-menu-item" id="dcm-copy-value" role="menuitem">Copy value</div>
+    </div>
+    <div id="col-context-menu" class="context-menu" role="menu">
+      <div class="context-menu-item" data-action="hide-col" role="menuitem">Hide this column</div>
+      <div class="context-menu-sep"></div>
+      <div class="context-menu-item" data-action="choose-cols" role="menuitem">Columns…</div>
+      <div class="context-menu-item" data-action="show-all-cols" role="menuitem">Show all columns</div>
+    </div>
+    <div id="context-menu" class="context-menu" role="menu">
+      <div class="context-menu-item" data-action="copy-url" role="menuitem">Copy URL</div>
+      <div class="context-menu-item" data-action="open-url" role="menuitem">Open URL in new tab</div>
+      <div class="context-menu-sep"></div>
+      <div class="context-menu-item" data-action="replay" role="menuitem">Replay request</div>
+      <div class="context-menu-item" data-action="rewrite" role="menuitem" title="Answer later requests for this URL with this stored response instead of calling the upstream">Rewrite response</div>
+      <div class="context-menu-sep"></div>
+      <div class="context-menu-item" data-action="copy-curl" role="menuitem">Copy as cURL</div>
+      <div class="context-menu-item" data-action="copy-fetch" role="menuitem">Copy as fetch()</div>
+      <div class="context-menu-sep"></div>
+      <div class="context-menu-item" data-action="copy-req-body" role="menuitem">Copy request body</div>
+      <div class="context-menu-item" data-action="copy-res-body" role="menuitem">Copy response body</div>
+      <div class="context-menu-item" data-action="copy-file" role="menuitem">Copy log file name</div>
+      <div class="context-menu-sep"></div>
+      <div class="context-menu-item danger" data-action="delete" role="menuitem">Delete entry</div>
     </div>
     <div id="detail">
-      <div id="detail-resizer" title="Drag to resize"></div>
       <div id="detail-head">
         <span class="title" id="detail-title"></span>
-        <button id="detail-raw" title="View the raw logged request JSON">raw request</button>
+        <span class="detail-mode" id="detail-mode" role="tablist">
+          <button type="button" data-mode="request" class="active" role="tab" title="The full logged request and response">Request</button>
+          <button type="button" data-mode="events" role="tab" title="The decoded analytics events this request carried, with their properties">Events</button>
+        </span>
+        <button id="detail-expand" title="Expand all">+ all</button>
+        <button id="detail-collapse" title="Collapse all">− all</button>
         <button id="detail-close" title="Close (Esc)">✕ Close</button>
       </div>
       <div id="detail-body"></div>
     </div>
   </main>
 
-  <section id="timeline">
+  <section id="timeline" hidden>
     <div id="timeline-head">
-      <span class="tl-title">VIEWER TIMELINE</span>
+      <button id="timeline-toggle" class="panel-chevron" title="Collapse / expand the timeline">▾</button>
+      <span class="panel-title">PLAYBACK TIMELINE</span>
       <select id="tl-view" title="Choose which view (playback) to show"></select>
-      <span class="tl-info" id="tl-info"></span>
+      <span class="panel-info" id="tl-info"></span>
       <div class="tl-legend">
         <span class="lg"><i class="sw s-startup"></i>Starting Up</span>
         <span class="lg"><i class="sw s-seek"></i>Seek Latency</span>
@@ -117,9 +225,9 @@
   <section id="console">
     <div id="console-resizer" title="Drag to resize"></div>
     <div id="console-head">
-      <button id="console-toggle" class="console-chevron" title="Collapse / expand the console">▾</button>
-      <span class="tl-title">CONSOLE</span>
-      <span class="tl-info" id="console-info">0 lines</span>
+      <button id="console-toggle" class="panel-chevron" title="Collapse / expand the console">▾</button>
+      <span class="panel-title">CONSOLE</span>
+      <span class="panel-info" id="console-info">0 lines</span>
       <label style="margin-left:auto"><input type="checkbox" id="console-autoscroll" checked /> autoscroll</label>
       <button id="console-clear" title="Clear the console (does not delete logs)">Clear</button>
     </div>
@@ -129,13 +237,17 @@
   <div id="toast" role="status" aria-live="polite"></div>
 
   <footer id="statusbar">
-    <span class="status-item"><span class="status-label">Events:</span> <span id="stat-events">0</span></span>
-    <span class="status-sep">|</span>
     <span class="status-item"><span class="status-label">Requests:</span> <span id="stat-requests">0</span></span>
+    <span class="status-sep">|</span>
+    <span class="status-item"><span class="status-label">Events:</span> <span id="stat-events">0</span></span>
     <span class="status-sep">|</span>
     <span class="status-item"><span class="status-label">Shown:</span> <span id="stat-shown">0</span></span>
     <span class="status-sep">|</span>
+    <span class="status-item"><span class="status-label">Domains:</span> <span id="stat-domains">0</span></span>
+    <span class="status-sep">|</span>
     <span class="status-item"><span class="status-label">Logs size:</span> <span id="stat-size">0 B</span></span>
+    <span class="status-sep" id="stat-rewrites-sep" style="display:none">|</span>
+    <span class="status-item" id="stat-rewrites-item" style="display:none" title="URLs answered from a stored response instead of the upstream"><span class="status-label">Rewrites:</span> <span id="stat-rewrites">0</span></span>
   </footer>
   <script src="/app.js" defer></script>
 </body>

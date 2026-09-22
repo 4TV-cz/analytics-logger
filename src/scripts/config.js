@@ -17,6 +17,15 @@ class Config {
         { prefix: '/mparticle', upstream: 'https://nativesdks.mparticle.com' },
         { prefix: '/ga', upstream: 'https://www.google-analytics.com' },
       ],
+      // Off by default: an analytics relay should hand responses back
+      // untouched. Turn on (Settings → Response) when proxying an API or HLS
+      // origin whose links the client must follow back through the proxy.
+      rewriteResponseUrls: process.env.REWRITE_RESPONSE_URLS === '1',
+      rewriteM3u8Urls: process.env.REWRITE_M3U8_URLS === '1',
+      // 0 disables the cap. Both are enforced together: whichever is hit first
+      // starts evicting the oldest entries.
+      maxLogFiles: Number(process.env.MAX_LOG_FILES) || 0,
+      maxLogBytes: Number(process.env.MAX_LOG_BYTES) || 0,
     };
     this.current = this._load();
   }
@@ -79,6 +88,18 @@ class Config {
         if (!/^https?:\/\/[^/\s]+$/i.test(upstream)) throw new Error(`route ${i + 1}: upstream must be an http(s) origin like https://host`);
         return { prefix: prefix.replace(/\/+$/, ''), upstream };
       });
+    }
+    if ('rewriteResponseUrls' in input) {
+      next.rewriteResponseUrls = !!input.rewriteResponseUrls;
+    }
+    if ('rewriteM3u8Urls' in input) {
+      next.rewriteM3u8Urls = !!input.rewriteM3u8Urls;
+    }
+    for (const key of ['maxLogFiles', 'maxLogBytes']) {
+      if (!(key in input)) continue;
+      const n = Number(input[key]);
+      if (!Number.isFinite(n) || n < 0) throw new Error(`${key} must be zero or a positive number`);
+      next[key] = Math.floor(n);
     }
     const changes = {
       portChanged: next.port !== this.current.port,

@@ -2,17 +2,16 @@
   "name": "analytics-logger",
   "version": "1.0.0",
   "private": true,
-  "description": "Local proxy + viewer for player analytics beacons (Mux today; mParticle and Google Analytics planned). Forwards beacons upstream unchanged and renders each event (decoded property names) on its own row.",
-  "main": "electron-main.js",
+  "description": "Local proxy + viewer: forwards any HTTP traffic upstream unchanged, logs every request/response to disk, decodes player analytics beacons (Mux, Google Analytics, mParticle) into one row per event, and can replay, rewrite and export the capture.",
+  "main": "electron/main.js",
   "scripts": {
-    "free-ports": "node scripts/free-ports.js",
-    "preweb": "node scripts/free-ports.js",
+    "stop": "node scripts/stop.js",
     "web": "node server.js",
-    "preweb:dev": "node scripts/free-ports.js",
-    "web:dev": "node --watch --watch-path=./server.js --watch-path=./src server.js",
-    "preelectron": "node scripts/free-ports.js",
-    "electron": "electron electron-main.js",
+    "web:dev": "node --watch --watch-path=./server.js --watch-path=./src/backend.js --watch-path=./src/scripts server.js --live-reload",
+    "electron": "electron .",
+    "electron:dev": "node electron/dev.js",
     "electron:release": "electron-builder",
+    "test": "node --test test/*.test.js",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "engines": {
@@ -25,18 +24,20 @@
       "output": "dist"
     },
     "files": [
-      "electron-main.js",
+      "electron/**/*",
       "server.js",
       "src/**/*",
-      "config/**/*",
-      "assets/**/*"
+      "assets/**/*",
+      "package.json"
     ],
     "win": {
       "icon": "assets/icon.ico",
       "target": [
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "artifactName": "AnalyticsLogger-${version}-portable.exe"
